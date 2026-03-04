@@ -14,16 +14,23 @@ struct ContentView: View {
     @State private var openedBook: PDFBook?
 
     var body: some View {
-        if let book = openedBook {
-            PDFReaderView(book: book, onClose: { openedBook = nil })
-                .environment(store)
-        } else {
-            NavigationSplitView {
-                SidebarView(selection: $selectedSidebar, searchText: $searchText)
-            } detail: {
-                detailView
+        ZStack {
+            if let book = openedBook {
+                PDFReaderView(book: book, onClose: { openedBook = nil })
+                    .environment(store)
+            } else {
+                NavigationSplitView {
+                    SidebarView(selection: $selectedSidebar, searchText: $searchText)
+                } detail: {
+                    detailView
+                }
+                .frame(minWidth: 900, minHeight: 600)
             }
-            .frame(minWidth: 900, minHeight: 600)
+
+            // Loading overlay for scanning
+            if store.isScanning {
+                scanningOverlay
+            }
         }
     }
 
@@ -46,6 +53,35 @@ struct ContentView: View {
             BookshelfView(searchText: searchText, onOpenBook: { book in openedBook = book })
         }
     }
+
+    // MARK: - Scanning Overlay
+
+    private var scanningOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                ProgressView(value: store.scanProgress) {
+                    Text("正在扫描 PDF 目录")
+                        .font(.headline)
+                } currentValueLabel: {
+                    Text(store.scanStatusMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .progressViewStyle(.linear)
+                .frame(width: 320)
+            }
+            .padding(32)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(.ultraThickMaterial)
+                    .shadow(color: .black.opacity(0.2), radius: 20)
+            )
+        }
+        .transition(.opacity)
+    }
 }
 
 // MARK: - Sidebar
@@ -54,6 +90,7 @@ struct SidebarView: View {
     @Environment(BookStore.self) private var store
     @Binding var selection: SidebarItem?
     @Binding var searchText: String
+    @State private var showStats = false
 
     var body: some View {
         List(selection: $selection) {
@@ -82,26 +119,50 @@ struct SidebarView: View {
         .safeAreaInset(edge: .bottom) {
             userInfoSection
         }
+        .sheet(isPresented: $showStats) {
+            StatsView()
+                .environment(store)
+        }
     }
 
     private var userInfoSection: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "person.circle.fill")
-                .font(.system(size: 28))
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(store.books.count) 本书")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                Text("\(store.vocabulary.count) 个单词")
+        Button(action: { showStats = true }) {
+            HStack(spacing: 10) {
+                // Avatar
+                Group {
+                    if let data = store.userAvatarData,
+                       let nsImage = NSImage(data: data) {
+                        Image(nsImage: nsImage)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Image(systemName: "person.circle.fill")
+                            .resizable()
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 28, height: 28)
+                .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.userName)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    Text("\(store.books.count) 本书 · \(store.vocabulary.count) 单词")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
             }
-            Spacer()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.bar)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(.bar)
+        .buttonStyle(.plain)
     }
 }
 

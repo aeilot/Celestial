@@ -82,8 +82,8 @@ struct ReaderNotesView: View {
                 .buttonStyle(.plain)
             }
 
-            Text(note.content)
-                .font(.callout)
+            // Markdown rendered content
+            MarkdownTextView(content: note.content)
 
             // Show highlight text if applicable
             if case .highlight(let hId) = note.scope,
@@ -131,18 +131,31 @@ struct ReaderNotesView: View {
             }
             .pickerStyle(.segmented)
 
-            HStack {
-                TextField("写下你的想法…", text: $newNoteContent, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...5)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("支持 Markdown 语法")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
 
-                Button(action: addNote) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(Color.accentColor)
+                HStack(alignment: .top) {
+                    TextEditor(text: $newNoteContent)
+                        .font(.callout)
+                        .frame(minHeight: 40, maxHeight: 100)
+                        .scrollContentBackground(.hidden)
+                        .background(Color(nsColor: .textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                        )
+
+                    Button(action: addNote) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(newNoteContent.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-                .buttonStyle(.plain)
-                .disabled(newNoteContent.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(12)
@@ -174,5 +187,23 @@ struct ReaderNotesView: View {
         let note = BookNote(scope: scope, content: content)
         store.addNote(to: book.id, note: note)
         newNoteContent = ""
+    }
+}
+
+// MARK: - Markdown Text View
+
+struct MarkdownTextView: View {
+    let content: String
+
+    var body: some View {
+        if let attributed = try? AttributedString(markdown: content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            Text(attributed)
+                .font(.callout)
+                .textSelection(.enabled)
+        } else {
+            Text(content)
+                .font(.callout)
+                .textSelection(.enabled)
+        }
     }
 }

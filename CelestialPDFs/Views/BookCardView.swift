@@ -16,7 +16,7 @@ struct BookCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Cover
+            // Cover - auto-cropped via BookStore.thumbnail
             ZStack {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color(nsColor: .controlBackgroundColor))
@@ -30,7 +30,7 @@ struct BookCardView: View {
                 if let thumbnail {
                     Image(nsImage: thumbnail)
                         .resizable()
-                        .scaledToFill()
+                        .scaledToFit()
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 } else {
                     // Placeholder cover
@@ -90,6 +90,7 @@ struct BookCardView: View {
             isHovered = hovering
         }
         .task {
+            // Thumbnail with auto-cropping handled in BookStore
             thumbnail = store.thumbnail(for: book)
         }
     }

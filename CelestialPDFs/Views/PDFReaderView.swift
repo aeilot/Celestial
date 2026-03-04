@@ -16,10 +16,11 @@ struct PDFReaderView: View {
     @State private var document: PDFDocument?
     @State private var selectedText = ""
     @State private var currentPageIndex = 0
-    @State private var showNotes = false
-    @State private var showAI = false
+    @State private var selectionBounds: CGRect?
+    @State private var selectionPageIndex: Int?
     @State private var rightPanel: RightPanel = .none
     @State private var pageCount = 0
+    @State private var showFloatingToolbar = false
 
     enum RightPanel {
         case none, notes, ai
@@ -33,13 +34,24 @@ struct PDFReaderView: View {
                 readerToolbar
                 Divider()
 
-                // PDF view
-                PDFKitView(
-                    document: document,
-                    selectedText: $selectedText,
-                    currentPageIndex: $currentPageIndex,
-                    highlights: currentBook.highlights
-                )
+                // PDF view with floating toolbar overlay
+                ZStack(alignment: .top) {
+                    PDFKitView(
+                        document: document,
+                        selectedText: $selectedText,
+                        currentPageIndex: $currentPageIndex,
+                        selectionBounds: $selectionBounds,
+                        selectionPageIndex: $selectionPageIndex,
+                        highlights: currentBook.highlights
+                    )
+
+                    // Floating toolbar after selection
+                    if showFloatingToolbar && !selectedText.isEmpty {
+                        floatingToolbar
+                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    }
+                }
+                .animation(.spring(response: 0.25), value: showFloatingToolbar)
 
                 // Status bar
                 statusBar
@@ -55,10 +67,72 @@ struct PDFReaderView: View {
             document = store.pdfDocument(for: book)
             pageCount = document?.pageCount ?? 0
         }
+        .onChange(of: selectedText) {
+            showFloatingToolbar = !selectedText.isEmpty
+        }
     }
 
     private var currentBook: PDFBook {
         store.books.first(where: { $0.id == book.id }) ?? book
+    }
+
+    // MARK: - Floating Toolbar
+
+    private var floatingToolbar: some View {
+        HStack(spacing: 2) {
+            Button(action: highlightSelection) {
+                Label("高亮", systemImage: "highlighter")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+
+            Divider()
+                .frame(height: 16)
+
+            Button(action: lookUpWord) {
+                Label("查词", systemImage: "character.book.closed")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+
+            Divider()
+                .frame(height: 16)
+
+            Button(action: addNoteForSelection) {
+                Label("笔记", systemImage: "note.text.badge.plus")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+
+            Divider()
+                .frame(height: 16)
+
+            Button(action: askAIAboutSelection) {
+                Label("问 AI", systemImage: "sparkles")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.ultraThickMaterial)
+                .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+        )
+        .padding(.top, 8)
     }
 
     // MARK: - Toolbar
@@ -79,6 +153,20 @@ struct PDFReaderView: View {
                 .lineLimit(1)
 
             Spacer()
+
+            // Zoom controls
+            Button(action: { /* zoom handled via PDFView */ }) {
+                Label("缩小", systemImage: "minus.magnifyingglass")
+            }
+            .help("缩小 (⌘-)")
+
+            Button(action: { /* zoom handled via PDFView */ }) {
+                Label("放大", systemImage: "plus.magnifyingglass")
+            }
+            .help("放大 (⌘+)")
+
+            Divider()
+                .frame(height: 20)
 
             // Highlight button
             Button(action: highlightSelection) {
@@ -162,22 +250,26 @@ struct PDFReaderView: View {
 
     private func highlightSelection() {
         guard !selectedText.isEmpty else { return }
-        // We need to get the selection bounds from the PDF view
-        // For now, create a placeholder highlight with approximate bounds
+
+        let bounds = selectionBounds ?? CGRect(x: 0, y: 0, width: 100, height: 20)
+        let page = selectionPageIndex ?? currentPageIndex
+
         let highlight = BookHighlight(
-            pageIndex: currentPageIndex,
+            pageIndex: page,
             text: selectedText,
-            boundsX: 0,
-            boundsY: 0,
-            boundsWidth: 100,
-            boundsHeight: 20
+            boundsX: bounds.origin.x,
+            boundsY: bounds.origin.y,
+            boundsWidth: bounds.width,
+            boundsHeight: bounds.height
         )
         store.addHighlight(to: book.id, highlight: highlight)
+        showFloatingToolbar = false
     }
 
     private func lookUpWord() {
         guard !selectedText.isEmpty else { return }
         let word = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !word.isEmpty else { return }
 
         // Save to vocabulary
         let entry = VocabularyEntry(
@@ -193,5 +285,22 @@ struct PDFReaderView: View {
         if let url = URL(string: "dict://\(sanitized)") {
             NSWorkspace.shared.open(url)
         }
+        showFloatingToolbar = false
+    }
+
+    private func addNoteForSelection() {
+        // Open notes panel highlighting scope
+        if rightPanel != .notes {
+            togglePanel(.notes)
+        }
+        showFloatingToolbar = false
+    }
+
+    private func askAIAboutSelection() {
+        // Open AI panel
+        if rightPanel != .ai {
+            togglePanel(.ai)
+        }
+        showFloatingToolbar = false
     }
 }

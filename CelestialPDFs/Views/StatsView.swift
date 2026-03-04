@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct StatsView: View {
     @Environment(BookStore.self) private var store

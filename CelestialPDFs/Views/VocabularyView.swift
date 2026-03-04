@@ -12,10 +12,11 @@ struct VocabularyView: View {
     @State private var searchWord = ""
 
     private var filteredVocabulary: [VocabularyEntry] {
+        let vocab = store.vocabulary
         if searchWord.isEmpty {
-            return store.vocabulary.sorted { $0.dateAdded > $1.dateAdded }
+            return vocab.sorted { $0.dateAdded > $1.dateAdded }
         }
-        return store.vocabulary.filter {
+        return vocab.filter {
             $0.word.localizedCaseInsensitiveContains(searchWord)
         }.sorted { $0.dateAdded > $1.dateAdded }
     }
@@ -40,7 +41,7 @@ struct VocabularyView: View {
                         Text(entry.word)
                             .font(.system(size: 15, weight: .semibold, design: .serif))
                         Spacer()
-                        if let bookTitle = entry.bookTitle {
+                        if let bookTitle = entry.bookTitle, !bookTitle.isEmpty {
                             Text(bookTitle)
                                 .font(.caption2)
                                 .padding(.horizontal, 6)

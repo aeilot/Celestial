@@ -78,10 +78,8 @@ struct NoteRow: View {
                     .foregroundStyle(.tertiary)
             }
 
-            // Content
-            Text(note.content)
-                .font(.body)
-                .lineLimit(3)
+            // Markdown rendered content
+            MarkdownTextView(content: note.content)
 
             // If it's a highlight note, show the highlighted text
             if case .highlight(let hId) = note.scope,
