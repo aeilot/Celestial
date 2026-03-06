@@ -70,23 +70,32 @@ struct BookshelfView: View {
         }
     }
 
+    @State private var containerWidth: CGFloat = 800
+
     var body: some View {
-        GeometryReader { geo in
-            ScrollView {
-                if store.libraryPath == nil {
-                    emptyLibraryView
-                } else if filteredBooks.isEmpty {
-                    emptyBooksView
-                } else {
-                    switch viewMode {
-                    case .grid:
-                        shelfGridContent(width: geo.size.width)
-                    case .list:
-                        listView
-                    }
+        ScrollView {
+            if store.libraryPath == nil {
+                emptyLibraryView
+            } else if filteredBooks.isEmpty {
+                emptyBooksView
+            } else {
+                switch viewMode {
+                case .grid:
+                    shelfGridContent(width: containerWidth)
+                case .list:
+                    listView
                 }
             }
         }
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { containerWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, newWidth in
+                        containerWidth = newWidth
+                    }
+            }
+        )
         .background(Color(nsColor: .controlBackgroundColor))
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {

@@ -282,8 +282,9 @@ class BookStore {
 
     // MARK: - Thumbnail (with Disk + Memory Cache)
 
-    /// Main entry point: memory cache → disk cache → render from PDF.
-    func thumbnail(for book: PDFBook, size: CGSize = CGSize(width: 180, height: 260)) -> NSImage? {
+    /// Fast cache-only lookup (memory → disk). No PDF rendering.
+    /// Safe to call on main thread — always fast.
+    func cachedThumbnail(for book: PDFBook) -> NSImage? {
         let nsid = book.id as NSUUID
 
         // 1. Memory cache hit
@@ -297,13 +298,84 @@ class BookStore {
             return diskImage
         }
 
-        // 3. Render and cache
+        return nil
+    }
+
+    /// Render thumbnail from PDF and store in both caches.
+    /// Intended to be called from a background thread.
+    @Sendable
+    nonisolated func renderAndCacheThumbnail(for book: PDFBook, size: CGSize = CGSize(width: 180, height: 260)) -> NSImage? {
+        let cacheDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("CelestialPDFs/thumbnails", isDirectory: true)
+        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        let diskPath = cacheDir.appendingPathComponent("\(book.id.uuidString).jpg")
+
+        // Check disk again (may have been cached by pre-warming)
+        if FileManager.default.fileExists(atPath: diskPath.path),
+           let diskImage = NSImage(contentsOf: diskPath) {
+            return diskImage
+        }
+
+        // Read libraryPath from UserDefaults bookmark to avoid actor isolation
+        guard let bookmarkData = UserDefaults.standard.data(forKey: "libraryBookmark"),
+              let dir = try? URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &(UnsafeMutablePointer<Bool>.allocate(capacity: 1).pointee)) else {
+            return nil
+        }
+
+        let fileURL = dir.appendingPathComponent(book.fileName)
+        guard let document = PDFDocument(url: fileURL),
+              let page = document.page(at: 0) else { return nil }
+
+        let pageBounds = page.bounds(for: .mediaBox)
+        let pageAspect = pageBounds.width / pageBounds.height
+        let targetAspect = size.width / size.height
+
+        let rawSize: CGSize
+        if pageAspect > targetAspect {
+            rawSize = CGSize(width: size.height * pageAspect, height: size.height)
+        } else {
+            rawSize = CGSize(width: size.width, height: size.width / pageAspect)
+        }
+
+        let rawThumbnail = page.thumbnail(of: rawSize, for: .mediaBox)
+        let cropRect = CGRect(
+            x: (rawSize.width - size.width) / 2,
+            y: (rawSize.height - size.height) / 2,
+            width: size.width,
+            height: size.height
+        )
+
+        let croppedImage = NSImage(size: size)
+        croppedImage.lockFocus()
+        rawThumbnail.draw(
+            in: NSRect(origin: .zero, size: size),
+            from: NSRect(origin: cropRect.origin, size: cropRect.size),
+            operation: .copy,
+            fraction: 1.0
+        )
+        croppedImage.unlockFocus()
+
+        // Save to disk cache
+        if let tiffData = croppedImage.tiffRepresentation,
+           let bitmapRep = NSBitmapImageRep(data: tiffData),
+           let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
+            try? jpegData.write(to: diskPath)
+        }
+
+        return croppedImage
+    }
+
+    /// Full lookup: memory → disk → render (legacy, still used internally).
+    func thumbnail(for book: PDFBook, size: CGSize = CGSize(width: 180, height: 260)) -> NSImage? {
+        if let cached = cachedThumbnail(for: book) {
+            return cached
+        }
         if let rendered = renderThumbnail(for: book, size: size) {
+            let nsid = book.id as NSUUID
             thumbnailMemoryCache.setObject(rendered, forKey: nsid)
             saveThumbnailToDisk(rendered, bookId: book.id)
             return rendered
         }
-
         return nil
     }
 

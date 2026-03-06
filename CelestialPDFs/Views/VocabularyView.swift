@@ -30,11 +30,34 @@ struct VocabularyView: View {
             }
         }
         .navigationTitle("单词本")
-        .searchable(text: $searchWord, prompt: "搜索单词…")
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("搜索单词…", text: $searchWord)
+                .textFieldStyle(.plain)
+            if !searchWord.isEmpty {
+                Button(action: { searchWord = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(8)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     private var vocabularyList: some View {
-        List {
+        VStack(spacing: 0) {
+            searchBar
+            Divider()
+            List {
             ForEach(filteredVocabulary) { entry in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -77,6 +100,7 @@ struct VocabularyView: View {
                     }
                 }
             }
+        }
         }
     }
 

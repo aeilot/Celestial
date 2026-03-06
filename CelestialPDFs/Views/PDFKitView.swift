@@ -130,9 +130,26 @@ struct PDFKitView: NSViewRepresentable {
             // Get selection bounds for floating toolbar
             if let page = selection.pages.first {
                 let pageBounds = selection.bounds(for: page)
-                // Convert page coordinates to view coordinates
-                let viewPoint = pdfView.convert(pageBounds, from: page)
-                parent.selectionBounds = viewPoint
+                // Convert page coordinates to PDFView coordinates
+                let viewRect = pdfView.convert(pageBounds, from: page)
+
+                // Convert from PDFView's document coordinate space
+                // to the visible viewport (SwiftUI overlay space)
+                let visibleRect = pdfView.documentView?.visibleRect ?? pdfView.bounds
+                let viewHeight = pdfView.bounds.height
+
+                // Adjust for scroll position and flip Y axis (AppKit → SwiftUI)
+                let relativeX = viewRect.origin.x - visibleRect.origin.x
+                let relativeY = viewRect.origin.y - visibleRect.origin.y
+                let flippedY = viewHeight - relativeY - viewRect.height
+
+                parent.selectionBounds = CGRect(
+                    x: relativeX,
+                    y: flippedY,
+                    width: viewRect.width,
+                    height: viewRect.height
+                )
+
                 if let doc = pdfView.document {
                     parent.selectionPageIndex = doc.index(for: page)
                 }

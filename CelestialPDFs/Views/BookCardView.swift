@@ -90,8 +90,18 @@ struct BookCardView: View {
             isHovered = hovering
         }
         .task {
-            // Thumbnail with auto-cropping handled in BookStore
-            thumbnail = store.thumbnail(for: book)
+            // Try fast cache hit first (memory + disk)
+            if let cached = store.cachedThumbnail(for: book) {
+                thumbnail = cached
+                return
+            }
+            // Render off main thread to avoid blocking UI
+            let bookCopy = book
+            let bookStore = store
+            let img = await Task.detached(priority: .utility) {
+                return bookStore.renderAndCacheThumbnail(for: bookCopy)
+            }.value
+            thumbnail = img
         }
     }
 
