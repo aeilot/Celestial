@@ -35,20 +35,28 @@ struct PDFReaderView: View {
                 Divider()
 
                 // PDF view with floating toolbar overlay
-                ZStack(alignment: .top) {
-                    PDFKitView(
-                        document: document,
-                        selectedText: $selectedText,
-                        currentPageIndex: $currentPageIndex,
-                        selectionBounds: $selectionBounds,
-                        selectionPageIndex: $selectionPageIndex,
-                        highlights: currentBook.highlights
-                    )
+                GeometryReader { geo in
+                    ZStack(alignment: .topLeading) {
+                        PDFKitView(
+                            document: document,
+                            selectedText: $selectedText,
+                            currentPageIndex: $currentPageIndex,
+                            selectionBounds: $selectionBounds,
+                            selectionPageIndex: $selectionPageIndex,
+                            highlights: currentBook.highlights
+                        )
 
-                    // Floating toolbar after selection
-                    if showFloatingToolbar && !selectedText.isEmpty {
-                        floatingToolbar
-                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        // Floating toolbar near selection
+                        if showFloatingToolbar && !selectedText.isEmpty {
+                            floatingToolbar
+                                .fixedSize()
+                                .position(
+                                    floatingToolbarPosition(
+                                        in: geo.size
+                                    )
+                                )
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        }
                     }
                 }
                 .animation(.spring(response: 0.25), value: showFloatingToolbar)
@@ -133,6 +141,36 @@ struct PDFReaderView: View {
                 .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
         )
         .padding(.top, 8)
+    }
+
+    /// Compute the position for the floating toolbar relative to the selection bounds.
+    private func floatingToolbarPosition(in containerSize: CGSize) -> CGPoint {
+        let toolbarWidth: CGFloat = 320  // approximate width of the floating toolbar
+        let toolbarHeight: CGFloat = 40  // approximate height
+
+        guard let bounds = selectionBounds else {
+            // Fallback to center-top
+            return CGPoint(x: containerSize.width / 2, y: toolbarHeight / 2 + 8)
+        }
+
+        // Center horizontally over the selection, clamped to container
+        let idealX = bounds.midX
+        let clampedX = min(
+            max(idealX, toolbarWidth / 2 + 8),
+            containerSize.width - toolbarWidth / 2 - 8
+        )
+
+        // Place above the selection (selectionBounds.minY is the top of selection in view coords)
+        let idealY = bounds.minY - toolbarHeight / 2 - 8
+        // If not enough space above, place below the selection
+        let y: CGFloat
+        if idealY < toolbarHeight / 2 + 4 {
+            y = bounds.maxY + toolbarHeight / 2 + 8
+        } else {
+            y = idealY
+        }
+
+        return CGPoint(x: clampedX, y: y)
     }
 
     // MARK: - Toolbar
