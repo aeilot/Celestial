@@ -12,6 +12,7 @@ struct BookshelfView: View {
     @Environment(BookStore.self) private var store
     var searchText: String = ""
     var filterTag: String? = nil
+    var filterFolder: String? = nil
     var onOpenBook: (PDFBook) -> Void
 
     @State private var editingBook: PDFBook?
@@ -25,6 +26,11 @@ struct BookshelfView: View {
 
     private var filteredBooks: [PDFBook] {
         var result = store.books
+
+        if let folder = filterFolder {
+            let prefix = folder + "/"
+            result = result.filter { $0.fileName.hasPrefix(prefix) }
+        }
 
         if let tag = filterTag {
             result = result.filter { $0.tags.contains(tag) }

@@ -49,6 +49,12 @@ struct ContentView: View {
                 filterTag: tag,
                 onOpenBook: { book in openedBook = book }
             )
+        case .folder(let folder):
+            BookshelfView(
+                searchText: searchText,
+                filterFolder: folder,
+                onOpenBook: { book in openedBook = book }
+            )
         case nil:
             BookshelfView(searchText: searchText, onOpenBook: { book in openedBook = book })
         }
@@ -102,6 +108,19 @@ struct SidebarView: View {
                     .tag(SidebarItem.notes)
                 Label("单词本", systemImage: "character.book.closed")
                     .tag(SidebarItem.vocabulary)
+            }
+
+            // Folders
+            if !store.allFolders.isEmpty {
+                Section("文件夹") {
+                    ForEach(store.allFolders, id: \.self) { folder in
+                        let depth = folder.components(separatedBy: "/").count - 1
+                        let displayName = folder.components(separatedBy: "/").last ?? folder
+                        Label(displayName, systemImage: depth > 0 ? "folder" : "folder.fill")
+                            .padding(.leading, CGFloat(depth) * 12)
+                            .tag(SidebarItem.folder(folder))
+                    }
+                }
             }
 
             // Tags

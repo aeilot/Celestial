@@ -34,11 +34,22 @@ class BookStore {
 
     private let fileManager = FileManager.default
 
+    // MARK: - Thumbnail Cache
+
+    /// In-memory thumbnail cache (evicts automatically under memory pressure)
+    private let thumbnailMemoryCache = NSCache<NSUUID, NSImage>()
+
     // MARK: - Paths
 
     private var appSupportDir: URL {
         let dir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("CelestialPDFs", isDirectory: true)
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private var thumbnailCacheDir: URL {
+        let dir = appSupportDir.appendingPathComponent("thumbnails", isDirectory: true)
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -56,9 +67,17 @@ class BookStore {
     // MARK: - Init
 
     init() {
+        thumbnailMemoryCache.countLimit = 200
         loadLibraryBookmark()
         loadBooks()
         loadVocabulary()
+
+        // Background scan on launch (silent, no overlay)
+        if libraryPath != nil {
+            Task {
+                await scanInBackground()
+            }
+        }
     }
 
     // MARK: - Security-Scoped Bookmark
@@ -123,12 +142,30 @@ class BookStore {
         scanProgress = 0
         scanStatusMessage = "正在扫描目录…"
 
-        // Collect PDF files on a background thread (supports subdirectories)
+        await performScan(dir: dir, showProgress: true)
+
+        scanStatusMessage = "扫描完成，共 \(books.count) 本书"
+        scanProgress = 1.0
+
+        // Dismiss scanning state after a brief delay
+        try? await Task.sleep(for: .seconds(0.8))
+        isScanning = false
+    }
+
+    /// Silent background scan on launch — no overlay, no progress UI.
+    func scanInBackground() async {
+        guard let dir = libraryPath else { return }
+        await performScan(dir: dir, showProgress: false)
+    }
+
+    /// Core scan logic shared by foreground and background modes.
+    private func performScan(dir: URL, showProgress: Bool) async {
+        // Collect PDF files on a background thread (recursive subdirectories)
         let pdfFiles: [URL] = await Task.detached {
             var files: [URL] = []
             let enumerator = FileManager.default.enumerator(
                 at: dir,
-                includingPropertiesForKeys: [.isRegularFileKey],
+                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
                 options: [.skipsHiddenFiles]
             )
             while let url = enumerator?.nextObject() as? URL {
@@ -139,14 +176,16 @@ class BookStore {
             return files
         }.value
 
+        // Build lookup of existing books by fileName for O(1) check
         let existingFileNames = Set(books.map { $0.fileName })
         let total = pdfFiles.count
 
-        scanStatusMessage = "找到 \(total) 个 PDF 文件"
+        if showProgress {
+            scanStatusMessage = "找到 \(total) 个 PDF 文件"
+        }
 
-        // Process files with progress
+        // Process files — add new ones
         for (index, fileURL) in pdfFiles.enumerated() {
-            // Use relative path from library root for subdirectories
             let relativePath = fileURL.path.replacingOccurrences(of: dir.path + "/", with: "")
 
             if !existingFileNames.contains(relativePath) {
@@ -155,11 +194,13 @@ class BookStore {
                 books.append(book)
             }
 
-            scanProgress = Double(index + 1) / Double(max(total, 1))
-            scanStatusMessage = "正在处理 \(index + 1) / \(total)…"
+            if showProgress {
+                scanProgress = Double(index + 1) / Double(max(total, 1))
+                scanStatusMessage = "正在处理 \(index + 1) / \(total)…"
+            }
 
             // Yield to keep UI responsive
-            if index % 10 == 0 {
+            if index % 20 == 0 {
                 await Task.yield()
             }
         }
@@ -172,12 +213,64 @@ class BookStore {
 
         saveBooks()
 
-        scanStatusMessage = "扫描完成，共 \(books.count) 本书"
-        scanProgress = 1.0
-
-        // Dismiss scanning state after a brief delay
-        try? await Task.sleep(for: .seconds(0.8))
-        isScanning = false
+        // Pre-warm thumbnail cache in background
+        let booksSnapshot = books
+        let cacheDir = thumbnailCacheDir
+        let libPath = libraryPath
+        let memCache = thumbnailMemoryCache
+        Task.detached(priority: .utility) {
+            for book in booksSnapshot {
+                let nsid = book.id as NSUUID
+                if memCache.object(forKey: nsid) == nil {
+                    // Try disk cache first
+                    let diskPath = cacheDir.appendingPathComponent("\(book.id.uuidString).jpg")
+                    if FileManager.default.fileExists(atPath: diskPath.path),
+                       let diskImage = NSImage(contentsOf: diskPath) {
+                        memCache.setObject(diskImage, forKey: nsid)
+                    } else if let dir = libPath {
+                        // Render from PDF
+                        let fileURL = dir.appendingPathComponent(book.fileName)
+                        if let document = PDFDocument(url: fileURL),
+                           let page = document.page(at: 0) {
+                            let size = CGSize(width: 180, height: 260)
+                            let pageBounds = page.bounds(for: .mediaBox)
+                            let pageAspect = pageBounds.width / pageBounds.height
+                            let targetAspect = size.width / size.height
+                            let rawSize: CGSize
+                            if pageAspect > targetAspect {
+                                rawSize = CGSize(width: size.height * pageAspect, height: size.height)
+                            } else {
+                                rawSize = CGSize(width: size.width, height: size.width / pageAspect)
+                            }
+                            let rawThumbnail = page.thumbnail(of: rawSize, for: .mediaBox)
+                            let cropRect = CGRect(
+                                x: (rawSize.width - size.width) / 2,
+                                y: (rawSize.height - size.height) / 2,
+                                width: size.width,
+                                height: size.height
+                            )
+                            let croppedImage = NSImage(size: size)
+                            croppedImage.lockFocus()
+                            rawThumbnail.draw(
+                                in: NSRect(origin: .zero, size: size),
+                                from: NSRect(origin: cropRect.origin, size: cropRect.size),
+                                operation: .copy,
+                                fraction: 1.0
+                            )
+                            croppedImage.unlockFocus()
+                            memCache.setObject(croppedImage, forKey: nsid)
+                            // Save to disk
+                            if let tiffData = croppedImage.tiffRepresentation,
+                               let bitmapRep = NSBitmapImageRep(data: tiffData),
+                               let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
+                                try? jpegData.write(to: diskPath)
+                            }
+                        }
+                    }
+                }
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+        }
     }
 
     // Sync wrapper for backward compat
@@ -185,6 +278,111 @@ class BookStore {
         Task {
             await scanDirectoryAsync()
         }
+    }
+
+    // MARK: - Thumbnail (with Disk + Memory Cache)
+
+    /// Main entry point: memory cache → disk cache → render from PDF.
+    func thumbnail(for book: PDFBook, size: CGSize = CGSize(width: 180, height: 260)) -> NSImage? {
+        let nsid = book.id as NSUUID
+
+        // 1. Memory cache hit
+        if let cached = thumbnailMemoryCache.object(forKey: nsid) {
+            return cached
+        }
+
+        // 2. Disk cache hit
+        if let diskImage = loadThumbnailFromDisk(bookId: book.id) {
+            thumbnailMemoryCache.setObject(diskImage, forKey: nsid)
+            return diskImage
+        }
+
+        // 3. Render and cache
+        if let rendered = renderThumbnail(for: book, size: size) {
+            thumbnailMemoryCache.setObject(rendered, forKey: nsid)
+            saveThumbnailToDisk(rendered, bookId: book.id)
+            return rendered
+        }
+
+        return nil
+    }
+
+    /// Load or render (used by background pre-warming).
+    private func loadOrRenderThumbnail(for book: PDFBook, size: CGSize = CGSize(width: 180, height: 260)) -> NSImage? {
+        if let diskImage = loadThumbnailFromDisk(bookId: book.id) {
+            return diskImage
+        }
+        if let rendered = renderThumbnail(for: book, size: size) {
+            saveThumbnailToDisk(rendered, bookId: book.id)
+            return rendered
+        }
+        return nil
+    }
+
+    private func thumbnailCachePath(bookId: UUID) -> URL {
+        thumbnailCacheDir.appendingPathComponent("\(bookId.uuidString).jpg")
+    }
+
+    private func loadThumbnailFromDisk(bookId: UUID) -> NSImage? {
+        let path = thumbnailCachePath(bookId: bookId)
+        guard fileManager.fileExists(atPath: path.path) else { return nil }
+        return NSImage(contentsOf: path)
+    }
+
+    private func saveThumbnailToDisk(_ image: NSImage, bookId: UUID) {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmapRep = NSBitmapImageRep(data: tiffData),
+              let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
+            return
+        }
+        let path = thumbnailCachePath(bookId: bookId)
+        try? jpegData.write(to: path)
+    }
+
+    private func renderThumbnail(for book: PDFBook, size: CGSize) -> NSImage? {
+        guard let dir = libraryPath else { return nil }
+        let fileURL = dir.appendingPathComponent(book.fileName)
+        guard let document = PDFDocument(url: fileURL) else { return nil }
+        guard let page = document.page(at: 0) else { return nil }
+
+        let pageBounds = page.bounds(for: .mediaBox)
+        let pageAspect = pageBounds.width / pageBounds.height
+        let targetAspect = size.width / size.height
+
+        // Generate a larger thumbnail for cropping
+        let rawSize: CGSize
+        if pageAspect > targetAspect {
+            rawSize = CGSize(width: size.height * pageAspect, height: size.height)
+        } else {
+            rawSize = CGSize(width: size.width, height: size.width / pageAspect)
+        }
+
+        let rawThumbnail = page.thumbnail(of: rawSize, for: .mediaBox)
+
+        // Crop to target size
+        let cropRect = CGRect(
+            x: (rawSize.width - size.width) / 2,
+            y: (rawSize.height - size.height) / 2,
+            width: size.width,
+            height: size.height
+        )
+
+        let croppedImage = NSImage(size: size)
+        croppedImage.lockFocus()
+        rawThumbnail.draw(
+            in: NSRect(origin: .zero, size: size),
+            from: NSRect(origin: cropRect.origin, size: cropRect.size),
+            operation: .copy,
+            fraction: 1.0
+        )
+        croppedImage.unlockFocus()
+        return croppedImage
+    }
+
+    func pdfDocument(for book: PDFBook) -> PDFDocument? {
+        guard let dir = libraryPath else { return nil }
+        let fileURL = dir.appendingPathComponent(book.fileName)
+        return PDFDocument(url: fileURL)
     }
 
     // MARK: - Book CRUD
@@ -210,6 +408,10 @@ class BookStore {
 
     func removeBook(_ book: PDFBook) {
         books.removeAll { $0.id == book.id }
+        // Clean up thumbnail cache
+        let cachePath = thumbnailCachePath(bookId: book.id)
+        try? fileManager.removeItem(at: cachePath)
+        thumbnailMemoryCache.removeObject(forKey: book.id as NSUUID)
         saveBooks()
     }
 
@@ -270,7 +472,6 @@ class BookStore {
     // MARK: - Vocabulary
 
     func addVocabulary(_ entry: VocabularyEntry) {
-        // Guard against empty words
         let trimmedWord = entry.word.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedWord.isEmpty else { return }
 
@@ -285,61 +486,30 @@ class BookStore {
         saveVocabulary()
     }
 
-    // MARK: - Thumbnail (with auto-cropping)
-
-    func thumbnail(for book: PDFBook, size: CGSize = CGSize(width: 180, height: 260)) -> NSImage? {
-        guard let dir = libraryPath else { return nil }
-        let fileURL = dir.appendingPathComponent(book.fileName)
-        guard let document = PDFDocument(url: fileURL) else { return nil }
-        guard let page = document.page(at: 0) else { return nil }
-
-        let pageBounds = page.bounds(for: .mediaBox)
-        let pageAspect = pageBounds.width / pageBounds.height
-        let targetAspect = size.width / size.height
-
-        // Generate a larger thumbnail for cropping
-        let rawSize: CGSize
-        if pageAspect > targetAspect {
-            // Page is wider — fit height, crop sides
-            rawSize = CGSize(width: size.height * pageAspect, height: size.height)
-        } else {
-            // Page is taller — fit width, crop top/bottom
-            rawSize = CGSize(width: size.width, height: size.width / pageAspect)
-        }
-
-        let rawThumbnail = page.thumbnail(of: rawSize, for: .mediaBox)
-
-        // Crop to target size
-        let cropRect = CGRect(
-            x: (rawSize.width - size.width) / 2,
-            y: (rawSize.height - size.height) / 2,
-            width: size.width,
-            height: size.height
-        )
-
-        let croppedImage = NSImage(size: size)
-        croppedImage.lockFocus()
-        rawThumbnail.draw(
-            in: NSRect(origin: .zero, size: size),
-            from: NSRect(origin: cropRect.origin, size: cropRect.size),
-            operation: .copy,
-            fraction: 1.0
-        )
-        croppedImage.unlockFocus()
-        return croppedImage
-    }
-
-    func pdfDocument(for book: PDFBook) -> PDFDocument? {
-        guard let dir = libraryPath else { return nil }
-        let fileURL = dir.appendingPathComponent(book.fileName)
-        return PDFDocument(url: fileURL)
-    }
-
     // MARK: - All Tags
 
     var allTags: [String] {
         let tags = books.flatMap { $0.tags }
         return Array(Set(tags)).sorted()
+    }
+
+    // MARK: - All Folders (subfolder structure)
+
+    /// Returns sorted list of unique subfolder paths extracted from book file names.
+    var allFolders: [String] {
+        var folders = Set<String>()
+        for book in books {
+            let components = book.fileName.split(separator: "/").dropLast() // remove file name
+            if !components.isEmpty {
+                // Add the immediate parent folder and all ancestor folders
+                var path = ""
+                for component in components {
+                    path = path.isEmpty ? String(component) : path + "/" + String(component)
+                    folders.insert(path)
+                }
+            }
+        }
+        return folders.sorted()
     }
 
     // MARK: - All Notes (across books)
@@ -361,7 +531,6 @@ class BookStore {
     }
 
     var totalPages: Int {
-        // Approximate - would need to load each PDF
         books.count * 100 // Placeholder
     }
 
@@ -390,7 +559,7 @@ class BookStore {
             books = try JSONDecoder().decode([PDFBook].self, from: data)
         } catch {
             print("Failed to load books: \(error)")
-            books = [] // Reset if corrupted
+            books = []
         }
     }
 
@@ -410,7 +579,7 @@ class BookStore {
             vocabulary = try JSONDecoder().decode([VocabularyEntry].self, from: data)
         } catch {
             print("Failed to load vocabulary: \(error)")
-            vocabulary = [] // Reset if corrupted instead of crashing
+            vocabulary = []
         }
     }
 }

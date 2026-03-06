@@ -162,4 +162,5 @@ enum SidebarItem: Hashable {
     case notes
     case vocabulary
     case tag(String)
+    case folder(String)
 }
