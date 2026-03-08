@@ -12,10 +12,8 @@ struct PDFKitView: NSViewRepresentable {
     let document: PDFDocument?
     @Binding var selectedText: String
     @Binding var currentPageIndex: Int
-    @Binding var selectionOverlayBounds: CGRect?
     @Binding var selectionPageBounds: CGRect?
     @Binding var selectionPageIndex: Int?
-    @Binding var selectionAnchor: ReaderSelectionAnchor?
     @Binding var jumpToPageIndex: Int?
     var highlights: [BookHighlight]
     var displayMode: PDFDisplayMode = .autoScale
@@ -34,17 +32,12 @@ struct PDFKitView: NSViewRepresentable {
         pdfView.document = document
         pdfView.delegate = context.coordinator
 
-        // Enable zoom
         pdfView.minScaleFactor = 0.25
         pdfView.maxScaleFactor = 5.0
 
-        // Apply display mode
         applyDisplayMode(displayMode, to: pdfView)
-
-        // Apply existing highlights
         applyHighlights(to: pdfView)
 
-        // Observe selection changes
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(Coordinator.selectionChanged(_:)),
@@ -52,17 +45,10 @@ struct PDFKitView: NSViewRepresentable {
             object: pdfView
         )
 
-        // Observe page changes
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(Coordinator.pageChanged(_:)),
             name: .PDFViewPageChanged,
-            object: pdfView
-        )
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.geometryChanged(_:)),
-            name: .PDFViewScaleChanged,
             object: pdfView
         )
 
@@ -71,7 +57,6 @@ struct PDFKitView: NSViewRepresentable {
         pdfView.addGestureRecognizer(tapGesture)
 
         context.coordinator.pdfView = pdfView
-        context.coordinator.observeScrollBounds(of: pdfView)
         return pdfView
     }
 
@@ -81,6 +66,7 @@ struct PDFKitView: NSViewRepresentable {
         }
         applyDisplayMode(displayMode, to: pdfView)
         applyHighlights(to: pdfView)
+
         if let targetIndex = jumpToPageIndex,
            let document = pdfView.document,
            targetIndex >= 0,
@@ -89,11 +75,11 @@ struct PDFKitView: NSViewRepresentable {
             pdfView.go(to: page)
             jumpToPageIndex = nil
         }
+
         if selectedText.isEmpty, pdfView.currentSelection != nil {
             pdfView.clearSelection()
             context.coordinator.clearSelectionBindings()
         }
-        context.coordinator.observeScrollBounds(of: pdfView)
     }
 
     private func applyDisplayMode(_ mode: PDFDisplayMode, to pdfView: PDFView) {
@@ -120,7 +106,6 @@ struct PDFKitView: NSViewRepresentable {
     private func applyHighlights(to pdfView: PDFView) {
         guard let document = pdfView.document else { return }
 
-        // Remove existing highlight annotations
         for i in 0..<document.pageCount {
             guard let page = document.page(at: i) else { continue }
             let annotations = page.annotations.filter {
@@ -129,7 +114,6 @@ struct PDFKitView: NSViewRepresentable {
             annotations.forEach { page.removeAnnotation($0) }
         }
 
-        // Add saved highlights
         for highlight in highlights {
             guard highlight.pageIndex < document.pageCount,
                   let page = document.page(at: highlight.pageIndex) else { continue }
@@ -150,28 +134,9 @@ struct PDFKitView: NSViewRepresentable {
         Coordinator(self)
     }
 
-    // MARK: - Zoom Control
-
-    static func zoomIn(pdfView: PDFView) {
-        if pdfView.canZoomIn {
-            pdfView.zoomIn(nil)
-        }
-    }
-
-    static func zoomOut(pdfView: PDFView) {
-        if pdfView.canZoomOut {
-            pdfView.zoomOut(nil)
-        }
-    }
-
-    static func zoomToFit(pdfView: PDFView) {
-        pdfView.autoScales = true
-    }
-
     class Coordinator: NSObject, PDFViewDelegate {
         var parent: PDFKitView
         weak var pdfView: PDFView?
-        weak var observedClipView: NSClipView?
 
         init(_ parent: PDFKitView) {
             self.parent = parent
@@ -181,39 +146,11 @@ struct PDFKitView: NSViewRepresentable {
             NotificationCenter.default.removeObserver(self)
         }
 
-        func observeScrollBounds(of pdfView: PDFView) {
-            DispatchQueue.main.async { [weak self, weak pdfView] in
-                guard let self, let pdfView else { return }
-                guard let clipView = pdfView.enclosingScrollView?.contentView else { return }
-                if self.observedClipView === clipView { return }
-
-                if let observedClipView = self.observedClipView {
-                    NotificationCenter.default.removeObserver(
-                        self,
-                        name: NSView.boundsDidChangeNotification,
-                        object: observedClipView
-                    )
-                }
-                self.observedClipView = clipView
-                clipView.postsBoundsChangedNotifications = true
-                NotificationCenter.default.addObserver(
-                    self,
-                    selector: #selector(Coordinator.scrollBoundsChanged(_:)),
-                    name: NSView.boundsDidChangeNotification,
-                    object: clipView
-                )
-            }
-        }
-
         @objc func selectionChanged(_ notification: Notification) {
             guard let pdfView = notification.object as? PDFView,
                   let selection = pdfView.currentSelection,
                   let rawText = selection.string else {
-                parent.selectedText = ""
-                parent.selectionOverlayBounds = nil
-                parent.selectionPageBounds = nil
-                parent.selectionPageIndex = nil
-                parent.selectionAnchor = nil
+                clearSelectionBindings()
                 return
             }
 
@@ -221,43 +158,22 @@ struct PDFKitView: NSViewRepresentable {
             guard !text.isEmpty,
                   let page = selection.pages.first,
                   let document = pdfView.document else {
-                parent.selectedText = ""
-                parent.selectionOverlayBounds = nil
-                parent.selectionPageBounds = nil
-                parent.selectionPageIndex = nil
-                parent.selectionAnchor = nil
+                clearSelectionBindings()
                 return
             }
 
             let pageIndex = document.index(for: page)
             let pageBounds = selection.bounds(for: page)
-            let firstLineBounds = firstLineBounds(for: selection, on: page) ?? pageBounds
-            let anchor = ReaderSelectionAnchor(pageIndex: pageIndex, firstLinePageBounds: firstLineBounds)
-
             parent.selectedText = text
             parent.selectionPageBounds = pageBounds
             parent.selectionPageIndex = pageIndex
-            parent.selectionAnchor = anchor
-            parent.selectionOverlayBounds = projectAnchor(anchor, in: pdfView)
         }
 
         @objc func pageChanged(_ notification: Notification) {
             guard let pdfView = notification.object as? PDFView,
                   let currentPage = pdfView.currentPage,
                   let document = pdfView.document else { return }
-            let index = document.index(for: currentPage)
-            parent.currentPageIndex = index
-            refreshProjectedAnchor(in: pdfView)
-        }
-
-        @objc func geometryChanged(_ notification: Notification) {
-            guard let pdfView = notification.object as? PDFView else { return }
-            refreshProjectedAnchor(in: pdfView)
-        }
-
-        @objc func scrollBoundsChanged(_ notification: Notification) {
-            guard let pdfView else { return }
-            refreshProjectedAnchor(in: pdfView)
+            parent.currentPageIndex = document.index(for: currentPage)
         }
 
         @objc func handlePDFClick(_ gesture: NSClickGestureRecognizer) {
@@ -284,43 +200,8 @@ struct PDFKitView: NSViewRepresentable {
 
         func clearSelectionBindings() {
             parent.selectedText = ""
-            parent.selectionOverlayBounds = nil
             parent.selectionPageBounds = nil
             parent.selectionPageIndex = nil
-            parent.selectionAnchor = nil
-        }
-
-        private func refreshProjectedAnchor(in pdfView: PDFView) {
-            guard let anchor = parent.selectionAnchor else { return }
-            parent.selectionOverlayBounds = projectAnchor(anchor, in: pdfView)
-        }
-
-        private func projectAnchor(_ anchor: ReaderSelectionAnchor, in pdfView: PDFView) -> CGRect? {
-            guard let document = pdfView.document,
-                  anchor.pageIndex >= 0,
-                  anchor.pageIndex < document.pageCount,
-                  let page = document.page(at: anchor.pageIndex) else {
-                parent.selectionAnchor = nil
-                parent.selectionOverlayBounds = nil
-                return nil
-            }
-            let overlay = pdfView.convert(anchor.firstLinePageBounds, from: page)
-            guard overlay.width > 0, overlay.height > 0 else { return nil }
-            return overlay
-        }
-
-        private func firstLineBounds(for selection: PDFSelection, on page: PDFPage) -> CGRect? {
-            let lineSelections = selection.selectionsByLine()
-            if let firstLine = lineSelections.first(where: { line in
-                line.pages.contains(where: { $0 === page })
-            }) {
-                let bounds = firstLine.bounds(for: page)
-                if bounds.width > 0 && bounds.height > 0 {
-                    return bounds
-                }
-            }
-            let fallback = selection.bounds(for: page)
-            return (fallback.width > 0 && fallback.height > 0) ? fallback : nil
         }
     }
 }

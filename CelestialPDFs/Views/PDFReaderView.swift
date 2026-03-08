@@ -16,10 +16,8 @@ struct PDFReaderView: View {
     @State private var document: PDFDocument?
     @State private var selectedText = ""
     @State private var currentPageIndex = 0
-    @State private var selectionOverlayBounds: CGRect?
     @State private var selectionPageBounds: CGRect?
     @State private var selectionPageIndex: Int?
-    @State private var selectionAnchor: ReaderSelectionAnchor?
     @State private var activeHighlightID: UUID?
     @State private var isTOCVisible = false
     @State private var tocItems: [ReaderOutlineItem] = []
@@ -30,8 +28,10 @@ struct PDFReaderView: View {
     @State private var pageCount = 0
     @State private var isLoadingDocument = false
     @State private var displayMode: PDFKitView.PDFDisplayMode = .autoScale
+    @State private var isHoveringTopEdge = false
+    @State private var didScrollUpRecently = true
     @AppStorage("useSerifFont") private var useSerifFont = false
-    @AppStorage("readerToolbarShowsLabels") private var readerToolbarShowsLabels = true
+    @AppStorage("readerTopBarVisibility") private var readerTopBarVisibilityRaw = ReaderTopBarVisibility.defaultValue.rawValue
     @AppStorage("lastHighlightColorHex") private var lastHighlightColorHex = HighlightPalette.defaultHex
     private let minimumPDFPaneWidth: CGFloat = 720
 
@@ -47,30 +47,20 @@ struct PDFReaderView: View {
                         .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
                 }
 
-                // PDF content
                 VStack(spacing: 0) {
-                    // Toolbar
-                    readerToolbar
-                    Divider()
-
-                    // PDF view
                     GeometryReader { _ in
-                        ZStack(alignment: .topLeading) {
+                        ZStack(alignment: .top) {
                             if isLoadingDocument {
-                                VStack {
-                                    ProgressView()
-                                        .scaleEffect(1.5)
-                                }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                ProgressView()
+                                    .scaleEffect(1.5)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                             } else {
                                 PDFKitView(
                                     document: document,
                                     selectedText: $selectedText,
                                     currentPageIndex: $currentPageIndex,
-                                    selectionOverlayBounds: $selectionOverlayBounds,
                                     selectionPageBounds: $selectionPageBounds,
                                     selectionPageIndex: $selectionPageIndex,
-                                    selectionAnchor: $selectionAnchor,
                                     jumpToPageIndex: $jumpToPageIndex,
                                     highlights: currentBook.highlights,
                                     displayMode: displayMode,
@@ -78,15 +68,26 @@ struct PDFReaderView: View {
                                     onBackgroundTapped: handleBackgroundTapped
                                 )
                             }
+
+                            Color.clear
+                                .frame(height: 96)
+                                .contentShape(Rectangle())
+                                .onHover { hovering in
+                                    isHoveringTopEdge = hovering
+                                }
+
+                            if isTopBarVisible {
+                                readerTopBar
+                                    .padding(.top, 12)
+                                    .transition(.move(edge: .top).combined(with: .opacity))
+                            }
                         }
                     }
 
-                    // Status bar
                     statusBar
                 }
                 .frame(minWidth: minimumPDFPaneWidth)
 
-                // Right sidebar
                 if isSidebarVisible {
                     rightPanelView
                         .frame(
@@ -99,11 +100,12 @@ struct PDFReaderView: View {
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.9), value: isSidebarVisible)
         }
+        .animation(.spring(response: 0.24, dampingFraction: 0.9), value: isTopBarVisible)
         .onAppear {
             Task {
                 isLoadingDocument = true
                 document = await Task.detached {
-                    store.pdfDocument(for: book)
+                    await store.pdfDocument(for: book)
                 }.value
                 pageCount = document?.pageCount ?? 0
                 tocItems = makeTOCItems(from: document)
@@ -113,11 +115,30 @@ struct PDFReaderView: View {
                 lastHighlightColorHex = HighlightPalette.defaultHex
             }
         }
+        .onChange(of: currentPageIndex) { oldValue, newValue in
+            if newValue < oldValue {
+                didScrollUpRecently = true
+            } else if newValue > oldValue {
+                didScrollUpRecently = false
+            }
+        }
         .onChange(of: selectedText) { _, newValue in
             if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 clearActiveHighlightState()
             }
         }
+    }
+
+    private var topBarVisibilityMode: ReaderTopBarVisibility {
+        ReaderTopBarVisibility.parse(readerTopBarVisibilityRaw)
+    }
+
+    private var isTopBarVisible: Bool {
+        ReaderTopBarVisibilityState.isTopBarVisible(
+            mode: topBarVisibilityMode,
+            isHoveringTopEdge: isHoveringTopEdge,
+            didScrollUpRecently: didScrollUpRecently
+        )
     }
 
     private var currentBook: PDFBook {
@@ -128,7 +149,6 @@ struct PDFReaderView: View {
         ReaderSelectionState(
             selectedText: selectedText,
             pageIndex: selectionPageIndex,
-            overlayBounds: selectionOverlayBounds,
             pageBounds: selectionPageBounds
         )
     }
@@ -142,120 +162,98 @@ struct PDFReaderView: View {
         return currentBook.highlights.first(where: { $0.id == highlightID })?.colorHex
     }
 
-    // MARK: - Toolbar
+    private var hasSelectionText: Bool {
+        !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
-    private var readerToolbar: some View {
+    // MARK: - Top Bar
+
+    private var readerTopBar: some View {
         HStack(spacing: 12) {
-            // Back button
-            Button(action: onClose) {
-                toolbarLabel("返回书架", systemImage: "chevron.left")
-            }
-            .buttonStyle(.plain)
-
-            Divider()
-                .frame(height: 20)
-
-            Text(book.title)
-                .font(.system(.headline, design: useSerifFont ? .serif : .default))
-                .lineLimit(1)
-
-            Spacer()
-
-            // Display mode buttons
-            Menu {
-                Button(action: { displayMode = .autoScale }) {
-                    Label("自动缩放", systemImage: displayMode == .autoScale ? "checkmark" : "")
-                }
-                Button(action: { displayMode = .fitWidth }) {
-                    Label("适应宽度", systemImage: displayMode == .fitWidth ? "checkmark" : "")
-                }
-                Button(action: { displayMode = .fitPage }) {
-                    Label("适应页面", systemImage: displayMode == .fitPage ? "checkmark" : "")
-                }
-            } label: {
-                toolbarLabel("显示", systemImage: "arrow.up.left.and.arrow.down.right")
-            }
-            .help("显示模式")
-
-            Divider()
-                .frame(height: 20)
-
-            // Zoom controls
-            Button(action: { /* zoom handled via PDFView */ }) {
-                toolbarLabel("缩小", systemImage: "minus.magnifyingglass")
-            }
-            .help("缩小 (⌘-)")
-
-            Button(action: { /* zoom handled via PDFView */ }) {
-                toolbarLabel("放大", systemImage: "plus.magnifyingglass")
-            }
-            .help("放大 (⌘+)")
-
-            Divider()
-                .frame(height: 20)
-
-            // Highlight colors
             HStack(spacing: 10) {
-                ForEach(HighlightPalette.allHex, id: \.self) { hex in
-                    Button(action: { handleHighlightColorTap(hex) }) {
-                        Circle()
-                            .fill(Color.fromHighlightHex(hex) ?? .yellow)
-                            .frame(width: 22, height: 22)
-                            .overlay {
-                                if hex == currentHighlightColorHex {
-                                    Image(systemName: "trash.fill")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(.white)
-                                }
-                            }
-                            .overlay {
-                                if shouldShowHighlightSelectionRing(for: hex) {
-                                    Circle()
-                                        .strokeBorder(.primary.opacity(0.5), lineWidth: 1.5)
-                                        .frame(width: 26, height: 26)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .help(highlightColorHelpText(for: hex))
-                }
+                circularButton("chevron.left", help: "返回书架", isActive: false, action: onClose)
+                circularButton("sidebar.left", help: "显示或隐藏左侧目录", isActive: isTOCVisible, action: toggleTOCSidebar)
+
+                Text(book.title)
+                    .font(.system(.headline, design: useSerifFont ? .serif : .default))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(book.title)
             }
 
-            // Look up word
-            Button(action: lookUpWord) {
-                toolbarLabel("查词", systemImage: "character.book.closed")
-            }
-            .disabled(selectedText.isEmpty)
-            .help("查询选中单词")
+            Spacer(minLength: 16)
 
-            Button(action: addNoteForSelection) {
-                toolbarLabel("笔记+", systemImage: "note.text.badge.plus")
-            }
-            .help("为选中文字添加笔记；无选中时新建全书笔记")
+            HStack(spacing: 10) {
+                highlightPaletteButtons
 
-            Button(action: askAIAboutSelection) {
-                toolbarLabel("问 AI", systemImage: "sparkles")
+                circularButton("note.text.badge.plus", help: "为选中文字添加笔记；无选中时新建全书笔记", isActive: selectedSidebarTab == .notes && isSidebarVisible, action: addNoteForSelection)
+                circularButton("sparkles", help: "基于选中文字提问；无选中时按全书上下文提问", isActive: selectedSidebarTab == .ai && isSidebarVisible, action: askAIAboutSelection)
+                circularButton("sidebar.right", help: "显示或隐藏右侧面板", isActive: isSidebarVisible, action: toggleSidebar)
             }
-            .help("基于选中文字提问；无选中时按全书上下文提问")
-
-            Divider()
-                .frame(height: 20)
-
-            Button(action: toggleTOCSidebar) {
-                toolbarLabel("目录", systemImage: "sidebar.left")
-            }
-            .foregroundStyle(isTOCVisible ? Color.accentColor : Color.primary)
-            .help("显示或隐藏左侧目录")
-
-            Button(action: toggleSidebar) {
-                toolbarLabel("面板", systemImage: "sidebar.right")
-            }
-            .foregroundStyle(isSidebarVisible ? Color.accentColor : Color.primary)
-            .help("显示或隐藏右侧面板")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(.bar)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 1100)
+        .modifier(ReaderGlassSurface(cornerRadius: 24))
+    }
+
+    private var highlightPaletteButtons: some View {
+        HStack(spacing: 8) {
+            ForEach(HighlightPalette.allHex, id: \.self) { hex in
+                Button(action: { handleHighlightColorTap(hex) }) {
+                    Circle()
+                        .fill(Color.fromHighlightHex(hex) ?? .yellow)
+                        .frame(width: 26, height: 26)
+                        .overlay {
+                            if hex == currentHighlightColorHex {
+                                Image(systemName: "trash.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .overlay {
+                            if shouldShowHighlightSelectionRing(for: hex) {
+                                Circle()
+                                    .strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5)
+                            }
+                        }
+                        .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
+                }
+                .buttonStyle(.plain)
+                .help(highlightColorHelpText(for: hex))
+                .opacity(hasSelectionText || activeHighlightID != nil ? 1.0 : 0.85)
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
+    @ViewBuilder
+    private func circularButton(
+        _ systemImage: String,
+        help: String,
+        isActive: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 34, height: 34)
+                .foregroundStyle(isActive ? Color.accentColor : Color.primary)
+                .background(
+                    Circle()
+                        .fill(.thinMaterial)
+                )
+                .overlay(
+                    Circle()
+                        .stroke(
+                            isActive ? Color.accentColor.opacity(0.45) : Color.white.opacity(0.28),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: .black.opacity(isActive ? 0.12 : 0.08), radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     // MARK: - Status Bar
@@ -315,6 +313,10 @@ struct PDFReaderView: View {
             }
             .tag(SidebarTab.ai)
         }
+        .padding(10)
+        .modifier(ReaderGlassSurface(cornerRadius: 20))
+        .padding(.vertical, 10)
+        .padding(.trailing, 10)
     }
 
     private var tocSidebar: some View {
@@ -362,9 +364,14 @@ struct PDFReaderView: View {
                     }
                 }
                 .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
             }
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .padding(10)
+        .modifier(ReaderGlassSurface(cornerRadius: 20))
+        .padding(.vertical, 10)
+        .padding(.leading, 10)
     }
 
     // MARK: - Actions
@@ -378,15 +385,6 @@ struct PDFReaderView: View {
     private func toggleTOCSidebar() {
         withAnimation(.spring(response: 0.3)) {
             isTOCVisible.toggle()
-        }
-    }
-
-    @ViewBuilder
-    private func toolbarLabel(_ title: String, systemImage: String) -> some View {
-        if readerToolbarShowsLabels {
-            Label(title, systemImage: systemImage)
-        } else {
-            Image(systemName: systemImage)
         }
     }
 
@@ -439,28 +437,6 @@ struct PDFReaderView: View {
         clearSelectionState()
     }
 
-    private func lookUpWord() {
-        guard !selectedText.isEmpty else { return }
-        let word = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !word.isEmpty else { return }
-
-        // Save to vocabulary
-        let entry = VocabularyEntry(
-            word: word,
-            bookId: book.id,
-            bookTitle: book.title,
-            pageIndex: currentPageIndex
-        )
-        store.addVocabulary(entry)
-
-        // Open Dictionary.app
-        let sanitized = word.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? word
-        if let url = URL(string: "dict://\(sanitized)") {
-            NSWorkspace.shared.open(url)
-        }
-        clearSelectionState()
-    }
-
     private func addNoteForSelection() {
         let content = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
         let note = BookNote(
@@ -482,10 +458,8 @@ struct PDFReaderView: View {
 
     private func clearSelectionState() {
         selectedText = ""
-        selectionOverlayBounds = nil
         selectionPageBounds = nil
         selectionPageIndex = nil
-        selectionAnchor = nil
     }
 
     private func handleHighlightTapped(id: UUID, bounds _: CGRect) {
@@ -576,4 +550,18 @@ private struct ReaderOutlineItem: Identifiable {
     let title: String
     let pageIndex: Int?
     let children: [ReaderOutlineItem]?
+}
+
+private struct ReaderGlassSurface: ViewModifier {
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.14), radius: 14, y: 5)
+    }
 }

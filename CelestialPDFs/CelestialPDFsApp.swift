@@ -18,6 +18,9 @@ struct CelestialPDFsApp: App {
                 .frame(minWidth: 900, minHeight: 600)
         }
         .defaultSize(width: 1200, height: 800)
+#if os(macOS)
+        .windowStyle(.hiddenTitleBar)
+#endif
 
         #if os(macOS)
         Settings {

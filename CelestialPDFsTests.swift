@@ -83,22 +83,19 @@ final class CelestialPDFsTests: XCTestCase {
 
     // MARK: - Reader Selection State Tests
 
-    func testReaderSelectionStateRequiresNonEmptyTextAndPositiveBounds() {
+    func testReaderSelectionStateRequiresNonEmptyTextAndPositivePageBounds() {
         let invalid = ReaderSelectionState(
             selectedText: "   ",
             pageIndex: 0,
-            overlayBounds: .zero,
             pageBounds: CGRect(x: 10, y: 10, width: 20, height: 8)
         )
-        XCTAssertFalse(invalid.isValidForToolbar)
+        XCTAssertFalse(invalid.isValidForHighlight)
 
         let valid = ReaderSelectionState(
             selectedText: "word",
             pageIndex: 2,
-            overlayBounds: CGRect(x: 5, y: 5, width: 30, height: 12),
             pageBounds: CGRect(x: 12, y: 200, width: 30, height: 12)
         )
-        XCTAssertTrue(valid.isValidForToolbar)
         XCTAssertTrue(valid.isValidForHighlight)
     }
 
@@ -106,7 +103,6 @@ final class CelestialPDFsTests: XCTestCase {
         let state = ReaderSelectionState(
             selectedText: "sample",
             pageIndex: 1,
-            overlayBounds: CGRect(x: 0, y: 0, width: 100, height: 20),
             pageBounds: CGRect(x: 40, y: 300, width: 100, height: 20)
         )
 
@@ -133,71 +129,53 @@ final class CelestialPDFsTests: XCTestCase {
         )
     }
 
-    func testFloatingToolbarPlacementFallsBackBelowWhenNoSpaceAbove() {
-        let selection = CGRect(x: 120, y: 2, width: 80, height: 20)
-        let viewport = CGRect(x: 0, y: 0, width: 400, height: 300)
-        let point = FloatingToolbarPlacement.computeToolbarPoint(
-            selection: selection,
-            viewport: viewport,
-            toolbar: CGSize(width: 220, height: 40),
-            margin: 8,
-            defaultPoint: .zero
-        )
-
-        XCTAssertGreaterThan(point.y, selection.maxY)
+    func testReaderTopBarVisibilityDefaultsToAlways() {
+        XCTAssertEqual(ReaderTopBarVisibility.defaultValue, .always)
+        XCTAssertEqual(ReaderTopBarVisibility.parse(""), .always)
+        XCTAssertEqual(ReaderTopBarVisibility.parse("unknown"), .always)
     }
 
-    func testToolbarPrefers2pxAboveFirstLineWhenSpaceExists() {
-        let selection = CGRect(x: 140, y: 120, width: 50, height: 16)
-        let viewport = CGRect(x: 0, y: 0, width: 400, height: 300)
-        let toolbar = CGSize(width: 220, height: 40)
-
-        let point = FloatingToolbarPlacement.computeToolbarPoint(
-            selection: selection,
-            viewport: viewport,
-            toolbar: toolbar,
-            margin: 8,
-            defaultPoint: .zero
+    func testReaderTopBarVisibilityStateForAlwaysModeIsAlwaysVisible() {
+        let visible = ReaderTopBarVisibilityState.isTopBarVisible(
+            mode: .always,
+            isHoveringTopEdge: false,
+            didScrollUpRecently: false
         )
-
-        let expectedY = selection.minY - toolbar.height / 2 - 2
-        XCTAssertEqual(point.y, expectedY, accuracy: 0.001)
+        XCTAssertTrue(visible)
     }
 
-    func testToolbarFallsBackBelowWhenAboveWouldClip() {
-        let selection = CGRect(x: 100, y: 10, width: 50, height: 16)
-        let viewport = CGRect(x: 0, y: 0, width: 400, height: 300)
-        let toolbar = CGSize(width: 220, height: 40)
-
-        let point = FloatingToolbarPlacement.computeToolbarPoint(
-            selection: selection,
-            viewport: viewport,
-            toolbar: toolbar,
-            margin: 8,
-            defaultPoint: .zero
+    func testReaderTopBarVisibilityStateForHoverModeTracksPointer() {
+        XCTAssertFalse(
+            ReaderTopBarVisibilityState.isTopBarVisible(
+                mode: .hover,
+                isHoveringTopEdge: false,
+                didScrollUpRecently: false
+            )
         )
-
-        let expectedY = selection.maxY + toolbar.height / 2 + 2
-        XCTAssertEqual(point.y, expectedY, accuracy: 0.001)
+        XCTAssertTrue(
+            ReaderTopBarVisibilityState.isTopBarVisible(
+                mode: .hover,
+                isHoveringTopEdge: true,
+                didScrollUpRecently: false
+            )
+        )
     }
 
-    func testToolbarClampsHorizontallyWithinViewport() {
-        let selection = CGRect(x: 5, y: 140, width: 10, height: 16)
-        let viewport = CGRect(x: 0, y: 0, width: 400, height: 300)
-        let toolbar = CGSize(width: 220, height: 40)
-
-        let point = FloatingToolbarPlacement.computeToolbarPoint(
-            selection: selection,
-            viewport: viewport,
-            toolbar: toolbar,
-            margin: 8,
-            defaultPoint: .zero
+    func testReaderTopBarVisibilityStateForScrollModeUsesRecentDirection() {
+        XCTAssertFalse(
+            ReaderTopBarVisibilityState.isTopBarVisible(
+                mode: .scroll,
+                isHoveringTopEdge: false,
+                didScrollUpRecently: false
+            )
         )
-
-        let minX = viewport.minX + toolbar.width / 2 + 8
-        let maxX = viewport.maxX - toolbar.width / 2 - 8
-        XCTAssertGreaterThanOrEqual(point.x, minX)
-        XCTAssertLessThanOrEqual(point.x, maxX)
+        XCTAssertTrue(
+            ReaderTopBarVisibilityState.isTopBarVisible(
+                mode: .scroll,
+                isHoveringTopEdge: false,
+                didScrollUpRecently: true
+            )
+        )
     }
 
     func testDetachNotesOnHighlightDeletePreservesContent() {

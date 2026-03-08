@@ -136,17 +136,10 @@ extension Color {
 struct ReaderSelectionState {
     var selectedText: String = ""
     var pageIndex: Int?
-    var overlayBounds: CGRect?
     var pageBounds: CGRect?
 
     var normalizedText: String {
         selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var isValidForToolbar: Bool {
-        !normalizedText.isEmpty &&
-        (overlayBounds?.width ?? 0) > 0 &&
-        (overlayBounds?.height ?? 0) > 0
     }
 
     var isValidForHighlight: Bool {
@@ -174,9 +167,33 @@ struct ReaderSelectionState {
     }
 }
 
-struct ReaderSelectionAnchor: Equatable {
-    var pageIndex: Int
-    var firstLinePageBounds: CGRect
+enum ReaderTopBarVisibility: String, CaseIterable {
+    case always
+    case hover
+    case scroll
+
+    static let defaultValue: ReaderTopBarVisibility = .always
+
+    static func parse(_ rawValue: String) -> ReaderTopBarVisibility {
+        ReaderTopBarVisibility(rawValue: rawValue) ?? .always
+    }
+}
+
+enum ReaderTopBarVisibilityState {
+    static func isTopBarVisible(
+        mode: ReaderTopBarVisibility,
+        isHoveringTopEdge: Bool,
+        didScrollUpRecently: Bool
+    ) -> Bool {
+        switch mode {
+        case .always:
+            return true
+        case .hover:
+            return isHoveringTopEdge
+        case .scroll:
+            return didScrollUpRecently
+        }
+    }
 }
 
 // MARK: - BookNote
