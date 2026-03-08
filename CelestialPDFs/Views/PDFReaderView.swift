@@ -16,13 +16,19 @@ struct PDFReaderView: View {
     @State private var document: PDFDocument?
     @State private var selectedText = ""
     @State private var currentPageIndex = 0
-    @State private var selectionBounds: CGRect?
+    @State private var selectionOverlayBounds: CGRect?
+    @State private var selectionPageBounds: CGRect?
     @State private var selectionPageIndex: Int?
+    @State private var activeHighlightID: UUID?
+    @State private var activeHighlightOverlayBounds: CGRect?
     @State private var rightPanel: RightPanel = .none
     @State private var pageCount = 0
-    @State private var showFloatingToolbar = false
     @State private var isLoadingDocument = false
     @State private var displayMode: PDFKitView.PDFDisplayMode = .autoScale
+    @AppStorage("useSerifFont") private var useSerifFont = false
+    @AppStorage("showFloatingToolbar") private var showFloatingToolbarSetting = true
+    @AppStorage("lastHighlightColorHex") private var lastHighlightColorHex = HighlightPalette.defaultHex
+    private let minimumPDFPaneWidth: CGFloat = 720
 
     enum RightPanel {
         case none, notes, ai
@@ -51,15 +57,17 @@ struct PDFReaderView: View {
                                     document: document,
                                     selectedText: $selectedText,
                                     currentPageIndex: $currentPageIndex,
-                                    selectionBounds: $selectionBounds,
+                                    selectionOverlayBounds: $selectionOverlayBounds,
+                                    selectionPageBounds: $selectionPageBounds,
                                     selectionPageIndex: $selectionPageIndex,
                                     highlights: currentBook.highlights,
-                                    displayMode: displayMode
+                                    displayMode: displayMode,
+                                    onHighlightAnnotationTapped: handleHighlightTapped
                                 )
                             }
 
                             // Floating toolbar near selection
-                            if showFloatingToolbar && !selectedText.isEmpty {
+                            if shouldShowFloatingToolbar {
                                 floatingToolbar
                                     .fixedSize()
                                     .position(
@@ -69,20 +77,35 @@ struct PDFReaderView: View {
                                     )
                                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
                             }
+
+                            if shouldShowHighlightPopover {
+                                highlightActionPopover
+                                    .position(highlightPopoverPosition(in: geo.size))
+                                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                            }
                         }
                     }
-                    .animation(.spring(response: 0.25), value: showFloatingToolbar)
+                    .animation(.spring(response: 0.25), value: shouldShowFloatingToolbar)
+                    .animation(.spring(response: 0.25), value: shouldShowHighlightPopover)
 
                     // Status bar
                     statusBar
                 }
+                .frame(minWidth: minimumPDFPaneWidth)
 
                 // Right Panel
                 if rightPanel != .none {
                     rightPanelView
-                        .frame(minWidth: 280, idealWidth: 320, maxWidth: geometry.size.width / 2)
+                        .id(rightPanel)
+                        .frame(
+                            minWidth: rightPanel == .notes ? 560 : 280,
+                            idealWidth: rightPanel == .notes ? 700 : 320,
+                            maxWidth: rightPanel == .notes ? max(geometry.size.width * 0.75, 560) : geometry.size.width / 2
+                        )
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
+            .animation(.spring(response: 0.28, dampingFraction: 0.9), value: rightPanel)
         }
         .onAppear {
             Task {
@@ -93,9 +116,14 @@ struct PDFReaderView: View {
                 pageCount = document?.pageCount ?? 0
                 isLoadingDocument = false
             }
+            if !HighlightPalette.allHex.contains(lastHighlightColorHex) {
+                lastHighlightColorHex = HighlightPalette.defaultHex
+            }
         }
-        .onChange(of: selectedText) {
-            showFloatingToolbar = !selectedText.isEmpty
+        .onChange(of: selectedText) { _, newValue in
+            if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                clearHighlightPopoverState()
+            }
         }
     }
 
@@ -103,16 +131,52 @@ struct PDFReaderView: View {
         store.books.first(where: { $0.id == book.id }) ?? book
     }
 
+    private var selectionState: ReaderSelectionState {
+        ReaderSelectionState(
+            selectedText: selectedText,
+            pageIndex: selectionPageIndex,
+            overlayBounds: selectionOverlayBounds,
+            pageBounds: selectionPageBounds
+        )
+    }
+
+    private var shouldShowFloatingToolbar: Bool {
+        showFloatingToolbarSetting && selectionState.isValidForToolbar && activeHighlightID == nil
+    }
+
+    private var shouldShowHighlightPopover: Bool {
+        activeHighlightID != nil && activeHighlightOverlayBounds != nil
+    }
+
+    private var normalizedStoredHighlightColor: String {
+        HighlightPalette.allHex.contains(lastHighlightColorHex) ? lastHighlightColorHex : HighlightPalette.defaultHex
+    }
+
     // MARK: - Floating Toolbar
 
     private var floatingToolbar: some View {
         HStack(spacing: 2) {
-            Button(action: highlightSelection) {
+            Menu {
+                ForEach(HighlightPalette.allHex, id: \.self) { hex in
+                    Button(action: {
+                        lastHighlightColorHex = hex
+                        highlightSelection(colorHex: hex)
+                    }) {
+                        Label {
+                            Text("高亮")
+                        } icon: {
+                            Circle()
+                                .fill(Color.fromHighlightHex(hex) ?? .yellow)
+                                .frame(width: 10, height: 10)
+                        }
+                    }
+                }
+            } label: {
                 Label("高亮", systemImage: "highlighter")
                     .labelStyle(.titleAndIcon)
-                    .font(.caption)
+                    .font(.system(.caption, design: useSerifFont ? .serif : .default))
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
 
@@ -122,7 +186,7 @@ struct PDFReaderView: View {
             Button(action: lookUpWord) {
                 Label("查词", systemImage: "character.book.closed")
                     .labelStyle(.titleAndIcon)
-                    .font(.caption)
+                    .font(.system(.caption, design: useSerifFont ? .serif : .default))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 8)
@@ -134,7 +198,7 @@ struct PDFReaderView: View {
             Button(action: addNoteForSelection) {
                 Label("笔记", systemImage: "note.text.badge.plus")
                     .labelStyle(.titleAndIcon)
-                    .font(.caption)
+                    .font(.system(.caption, design: useSerifFont ? .serif : .default))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 8)
@@ -146,7 +210,7 @@ struct PDFReaderView: View {
             Button(action: askAIAboutSelection) {
                 Label("问 AI", systemImage: "sparkles")
                     .labelStyle(.titleAndIcon)
-                    .font(.caption)
+                    .font(.system(.caption, design: useSerifFont ? .serif : .default))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 8)
@@ -159,27 +223,86 @@ struct PDFReaderView: View {
                 .fill(.ultraThickMaterial)
                 .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
         )
-        .padding(.top, 8)
+    }
+
+    private var highlightActionPopover: some View {
+        HStack(spacing: 8) {
+            ForEach(HighlightPalette.allHex, id: \.self) { hex in
+                Button(action: {
+                    guard let highlightID = activeHighlightID else { return }
+                    store.updateHighlightColor(in: book.id, highlightId: highlightID, colorHex: hex)
+                    lastHighlightColorHex = hex
+                    clearHighlightPopoverState()
+                }) {
+                    Circle()
+                        .fill(Color.fromHighlightHex(hex) ?? .yellow)
+                        .frame(width: 16, height: 16)
+                        .overlay {
+                            if hex == currentHighlightColorHex {
+                                Circle()
+                                    .strokeBorder(.primary.opacity(0.65), lineWidth: 1.5)
+                                    .frame(width: 20, height: 20)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+
+            Divider()
+                .frame(height: 16)
+
+            Button(role: .destructive, action: deleteActiveHighlight) {
+                Image(systemName: "trash")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.ultraThickMaterial)
+                .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+        )
+    }
+
+    private var currentHighlightColorHex: String? {
+        guard let highlightID = activeHighlightID else { return nil }
+        return currentBook.highlights.first(where: { $0.id == highlightID })?.colorHex
     }
 
     /// Compute the position for the floating toolbar relative to the selection bounds.
     private func floatingToolbarPosition(in containerSize: CGSize) -> CGPoint {
-        let toolbarWidth: CGFloat = 320
-        let toolbarHeight: CGFloat = 40
+        let toolbarSize = CGSize(width: 320, height: 40)
+        let viewport = CGRect(origin: .zero, size: containerSize)
+        let defaultPoint = CGPoint(x: containerSize.width / 2, y: toolbarSize.height / 2 + 8)
 
-        guard let bounds = selectionBounds else {
-            return CGPoint(x: containerSize.width / 2, y: toolbarHeight / 2 + 8)
+        guard let bounds = selectionOverlayBounds else {
+            return defaultPoint
         }
 
-        let clampedX = min(
-            max(bounds.midX, toolbarWidth / 2 + 8),
-            containerSize.width - toolbarWidth / 2 - 8
+        return FloatingToolbarPlacement.computeToolbarPoint(
+            selection: bounds,
+            viewport: viewport,
+            toolbar: toolbarSize,
+            margin: 8,
+            defaultPoint: defaultPoint
         )
+    }
 
-        // Position 5px above selection
-        let y = bounds.minY - toolbarHeight / 2 - 5
+    private func highlightPopoverPosition(in containerSize: CGSize) -> CGPoint {
+        let popoverSize = CGSize(width: 240, height: 36)
+        let viewport = CGRect(origin: .zero, size: containerSize)
+        let defaultPoint = CGPoint(x: containerSize.width / 2, y: popoverSize.height / 2 + 8)
+        guard let bounds = activeHighlightOverlayBounds else { return defaultPoint }
 
-        return CGPoint(x: clampedX, y: max(y, toolbarHeight / 2 + 8))
+        return FloatingToolbarPlacement.computeToolbarPoint(
+            selection: bounds,
+            viewport: viewport,
+            toolbar: popoverSize,
+            margin: 8,
+            defaultPoint: defaultPoint
+        )
     }
 
     // MARK: - Toolbar
@@ -196,7 +319,7 @@ struct PDFReaderView: View {
                 .frame(height: 20)
 
             Text(book.title)
-                .font(.headline)
+                .font(.system(.headline, design: useSerifFont ? .serif : .default))
                 .lineLimit(1)
 
             Spacer()
@@ -235,7 +358,7 @@ struct PDFReaderView: View {
                 .frame(height: 20)
 
             // Highlight button
-            Button(action: highlightSelection) {
+            Button(action: { highlightSelection(colorHex: normalizedStoredHighlightColor) }) {
                 Label("高亮", systemImage: "highlighter")
             }
             .disabled(selectedText.isEmpty)
@@ -273,12 +396,12 @@ struct PDFReaderView: View {
     private var statusBar: some View {
         HStack {
             Text("第 \(currentPageIndex + 1) / \(pageCount) 页")
-                .font(.caption)
+                .font(.system(.caption, design: useSerifFont ? .serif : .default))
                 .foregroundStyle(.secondary)
             Spacer()
             if !selectedText.isEmpty {
                 Text("已选中 \(selectedText.count) 个字符")
-                    .font(.caption)
+                    .font(.system(.caption, design: useSerifFont ? .serif : .default))
                     .foregroundStyle(.secondary)
             }
         }
@@ -293,7 +416,22 @@ struct PDFReaderView: View {
     private var rightPanelView: some View {
         switch rightPanel {
         case .notes:
-            ReaderNotesView(book: currentBook, currentPage: currentPageIndex, selectedText: selectedText)
+            ReaderNotesView(
+                book: currentBook,
+                currentPage: currentPageIndex,
+                selectedText: selectedText,
+                onHighlightColorChange: { highlightID, colorHex in
+                    store.updateHighlightColor(in: book.id, highlightId: highlightID, colorHex: colorHex)
+                    lastHighlightColorHex = colorHex
+                },
+                onHighlightDelete: { highlightID in
+                    store.detachNotesLinkedToHighlight(in: book.id, highlightId: highlightID)
+                    store.removeHighlight(from: book.id, highlightId: highlightID)
+                    if activeHighlightID == highlightID {
+                        clearHighlightPopoverState()
+                    }
+                }
+            )
         case .ai:
             AIChatView(
                 book: currentBook,
@@ -314,23 +452,14 @@ struct PDFReaderView: View {
         }
     }
 
-    private func highlightSelection() {
-        guard !selectedText.isEmpty else { return }
-
-        let bounds = selectionBounds ?? CGRect(x: 0, y: 0, width: 100, height: 20)
-        let page = selectionPageIndex ?? currentPageIndex
-
-        let highlight = BookHighlight(
-            pageIndex: page,
-            text: selectedText,
-            boundsX: bounds.origin.x,
-            boundsY: bounds.origin.y,
-            boundsWidth: bounds.width,
-            boundsHeight: bounds.height
-        )
-        store.addHighlight(to: book.id, highlight: highlight)
-        selectedText = ""
-        showFloatingToolbar = false
+    private func highlightSelection(colorHex: String) {
+        guard let highlight = ReaderSelectionState.makeHighlight(from: selectionState) else {
+            return
+        }
+        var mutable = highlight
+        mutable.colorHex = HighlightPalette.allHex.contains(colorHex) ? colorHex : HighlightPalette.defaultHex
+        store.addHighlight(to: book.id, highlight: mutable)
+        clearSelectionState()
     }
 
     private func lookUpWord() {
@@ -352,7 +481,7 @@ struct PDFReaderView: View {
         if let url = URL(string: "dict://\(sanitized)") {
             NSWorkspace.shared.open(url)
         }
-        showFloatingToolbar = false
+        clearSelectionState()
     }
 
     private func addNoteForSelection() {
@@ -360,7 +489,7 @@ struct PDFReaderView: View {
         if rightPanel != .notes {
             togglePanel(.notes)
         }
-        showFloatingToolbar = false
+        clearSelectionState()
     }
 
     private func askAIAboutSelection() {
@@ -368,6 +497,91 @@ struct PDFReaderView: View {
         if rightPanel != .ai {
             togglePanel(.ai)
         }
-        showFloatingToolbar = false
+        clearSelectionState()
+    }
+
+    private func clearSelectionState() {
+        selectedText = ""
+        selectionOverlayBounds = nil
+        selectionPageBounds = nil
+        selectionPageIndex = nil
+    }
+
+    private func handleHighlightTapped(id: UUID, bounds: CGRect) {
+        activeHighlightID = id
+        activeHighlightOverlayBounds = bounds
+        clearSelectionState()
+    }
+
+    private func clearHighlightPopoverState() {
+        activeHighlightID = nil
+        activeHighlightOverlayBounds = nil
+    }
+
+    private func deleteActiveHighlight() {
+        guard let highlightID = activeHighlightID else { return }
+        store.detachNotesLinkedToHighlight(in: book.id, highlightId: highlightID)
+        store.removeHighlight(from: book.id, highlightId: highlightID)
+        clearHighlightPopoverState()
+    }
+}
+
+enum FloatingToolbarPlacement {
+    static func computeToolbarPoint(
+        selection: CGRect,
+        viewport: CGRect,
+        toolbar: CGSize,
+        margin: CGFloat,
+        defaultPoint: CGPoint
+    ) -> CGPoint {
+        guard selection.width > 0, selection.height > 0 else { return defaultPoint }
+
+        let minX = viewport.minX + toolbar.width / 2 + margin
+        let maxX = viewport.maxX - toolbar.width / 2 - margin
+        let clampedX = min(max(selection.midX, minX), maxX)
+
+        let aboveCenter = CGPoint(x: clampedX, y: selection.minY - toolbar.height / 2 - 2)
+        let belowCenter = CGPoint(x: clampedX, y: selection.maxY + toolbar.height / 2 + 2)
+        let topEdge = CGPoint(x: clampedX, y: viewport.minY + toolbar.height / 2 + margin)
+        let bottomEdge = CGPoint(x: clampedX, y: viewport.maxY - toolbar.height / 2 - margin)
+        let candidates = [aboveCenter, belowCenter, topEdge, bottomEdge]
+
+        if let firstNonOverlap = candidates.first(where: {
+            viewport.contains(toolbarRect(center: $0, size: toolbar)) &&
+            !toolbarRect(center: $0, size: toolbar).intersects(selection)
+        }) {
+            return firstNonOverlap
+        }
+
+        return candidates.min(by: {
+            candidateScore(center: $0, selection: selection, viewport: viewport, toolbar: toolbar) <
+            candidateScore(center: $1, selection: selection, viewport: viewport, toolbar: toolbar)
+        }) ?? defaultPoint
+    }
+
+    private static func toolbarRect(center: CGPoint, size: CGSize) -> CGRect {
+        CGRect(
+            x: center.x - size.width / 2,
+            y: center.y - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    private static func intersectionArea(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
+        let intersection = lhs.intersection(rhs)
+        guard !intersection.isNull else { return 0 }
+        return intersection.width * intersection.height
+    }
+
+    private static func candidateScore(
+        center: CGPoint,
+        selection: CGRect,
+        viewport: CGRect,
+        toolbar: CGSize
+    ) -> CGFloat {
+        let rect = toolbarRect(center: center, size: toolbar)
+        let viewportPenalty: CGFloat = viewport.contains(rect) ? 0 : 10_000
+        return intersectionArea(rect, selection) + viewportPenalty
     }
 }

@@ -517,6 +517,40 @@ class BookStore {
         }
     }
 
+    func updateHighlightColor(in bookId: UUID, highlightId: UUID, colorHex: String) {
+        let normalizedColor = HighlightPalette.allHex.contains(colorHex) ? colorHex : HighlightPalette.defaultHex
+        if let bIndex = books.firstIndex(where: { $0.id == bookId }),
+           let hIndex = books[bIndex].highlights.firstIndex(where: { $0.id == highlightId }) {
+            books[bIndex].highlights[hIndex].colorHex = normalizedColor
+            saveBooks()
+        }
+    }
+
+    func detachNotesLinkedToHighlight(in bookId: UUID, highlightId: UUID) {
+        guard let bIndex = books.firstIndex(where: { $0.id == bookId }) else { return }
+        let prefix = "[原高亮已删除]"
+        var changed = false
+
+        books[bIndex].notes = books[bIndex].notes.map { note in
+            guard case .highlight(let linkedId) = note.scope, linkedId == highlightId else {
+                return note
+            }
+
+            var detached = note
+            detached.scope = .book
+            if !detached.content.hasPrefix(prefix) {
+                detached.content = "\(prefix)\n\(detached.content)"
+            }
+            detached.dateModified = Date()
+            changed = true
+            return detached
+        }
+
+        if changed {
+            saveBooks()
+        }
+    }
+
     // MARK: - Notes
 
     func addNote(to bookId: UUID, note: BookNote) {

@@ -12,10 +12,12 @@ struct PDFKitView: NSViewRepresentable {
     let document: PDFDocument?
     @Binding var selectedText: String
     @Binding var currentPageIndex: Int
-    @Binding var selectionBounds: CGRect?
+    @Binding var selectionOverlayBounds: CGRect?
+    @Binding var selectionPageBounds: CGRect?
     @Binding var selectionPageIndex: Int?
     var highlights: [BookHighlight]
     var displayMode: PDFDisplayMode = .autoScale
+    var onHighlightAnnotationTapped: ((UUID, CGRect) -> Void)? = nil
 
     enum PDFDisplayMode {
         case fitWidth, fitPage, autoScale
@@ -54,6 +56,10 @@ struct PDFKitView: NSViewRepresentable {
             name: .PDFViewPageChanged,
             object: pdfView
         )
+
+        let tapGesture = NSClickGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePDFClick(_:)))
+        tapGesture.buttonMask = 0x1
+        pdfView.addGestureRecognizer(tapGesture)
 
         context.coordinator.pdfView = pdfView
         return pdfView
@@ -95,7 +101,7 @@ struct PDFKitView: NSViewRepresentable {
         for i in 0..<document.pageCount {
             guard let page = document.page(at: i) else { continue }
             let annotations = page.annotations.filter {
-                $0.type == "Highlight" && $0.userName == "CelestialPDFs"
+                $0.type == "Highlight" && ($0.userName?.hasPrefix("CelestialPDFs") ?? false)
             }
             annotations.forEach { page.removeAnnotation($0) }
         }
@@ -110,8 +116,9 @@ struct PDFKitView: NSViewRepresentable {
                 forType: .highlight,
                 withProperties: nil
             )
-            annotation.color = NSColor.yellow.withAlphaComponent(0.4)
-            annotation.userName = "CelestialPDFs"
+            annotation.color = NSColor.fromHighlightHex(highlight.colorHex).withAlphaComponent(0.4)
+            annotation.userName = "CelestialPDFs:\(highlight.id.uuidString)"
+            annotation.contents = highlight.id.uuidString
             page.addAnnotation(annotation)
         }
     }
@@ -151,7 +158,8 @@ struct PDFKitView: NSViewRepresentable {
                   let selection = pdfView.currentSelection,
                   let text = selection.string, !text.isEmpty else {
                 parent.selectedText = ""
-                parent.selectionBounds = nil
+                parent.selectionOverlayBounds = nil
+                parent.selectionPageBounds = nil
                 parent.selectionPageIndex = nil
                 return
             }
@@ -160,25 +168,9 @@ struct PDFKitView: NSViewRepresentable {
             // Get selection bounds for floating toolbar
             if let page = selection.pages.first {
                 let pageBounds = selection.bounds(for: page)
-                // Convert page coordinates to PDFView coordinates
-                let viewRect = pdfView.convert(pageBounds, from: page)
-
-                // Convert from PDFView's document coordinate space
-                // to the visible viewport (SwiftUI overlay space)
-                let visibleRect = pdfView.documentView?.visibleRect ?? pdfView.bounds
-                let viewHeight = pdfView.bounds.height
-
-                // Adjust for scroll position and flip Y axis (AppKit → SwiftUI)
-                let relativeX = viewRect.origin.x - visibleRect.origin.x
-                let relativeY = viewRect.origin.y - visibleRect.origin.y
-                let flippedY = viewHeight - relativeY - viewRect.height
-
-                parent.selectionBounds = CGRect(
-                    x: relativeX,
-                    y: flippedY,
-                    width: viewRect.width,
-                    height: viewRect.height
-                )
+                let overlayBounds = pdfView.convert(pageBounds, from: page)
+                parent.selectionOverlayBounds = overlayBounds
+                parent.selectionPageBounds = pageBounds
 
                 if let doc = pdfView.document {
                     parent.selectionPageIndex = doc.index(for: page)
@@ -192,6 +184,25 @@ struct PDFKitView: NSViewRepresentable {
                   let document = pdfView.document else { return }
             let index = document.index(for: currentPage)
             parent.currentPageIndex = index
+        }
+
+        @objc func handlePDFClick(_ gesture: NSClickGestureRecognizer) {
+            guard let pdfView = gesture.view as? PDFView else { return }
+            let pointInView = gesture.location(in: pdfView)
+            guard let page = pdfView.page(for: pointInView, nearest: true) else { return }
+            let pointInPage = pdfView.convert(pointInView, to: page)
+
+            guard let annotation = page.annotation(at: pointInPage),
+                  annotation.type == "Highlight",
+                  let userName = annotation.userName,
+                  userName.hasPrefix("CelestialPDFs") else {
+                return
+            }
+
+            let idText = annotation.contents ?? userName.replacingOccurrences(of: "CelestialPDFs:", with: "")
+            guard let highlightID = UUID(uuidString: idText) else { return }
+            let overlayRect = pdfView.convert(annotation.bounds, from: page)
+            parent.onHighlightAnnotationTapped?(highlightID, overlayRect)
         }
     }
 }

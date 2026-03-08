@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import AppKit
 
 // MARK: - PDFBook
 
@@ -81,6 +82,95 @@ struct BookHighlight: Identifiable, Codable, Hashable {
 
     var bounds: CGRect {
         CGRect(x: boundsX, y: boundsY, width: boundsWidth, height: boundsHeight)
+    }
+}
+
+enum HighlightPalette {
+    static let defaultHex = "#FFEB3B"
+    static let allHex: [String] = [
+        "#FFEB3B", // yellow
+        "#FFD54F", // amber
+        "#AED581", // light green
+        "#4FC3F7", // light blue
+        "#B39DDB", // light purple
+        "#F48FB1", // pink
+        "#FFAB91", // orange
+        "#B0BEC5"  // blue gray
+    ]
+}
+
+extension NSColor {
+    static func fromHighlightHex(_ hex: String) -> NSColor {
+        guard let color = Color.fromHighlightHex(hex) else {
+            return .yellow
+        }
+        return NSColor(color)
+    }
+}
+
+extension Color {
+    static func fromHighlightHex(_ hex: String) -> Color? {
+        let cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleaned.count == 7, cleaned.hasPrefix("#") else { return nil }
+
+        let rString = String(cleaned.dropFirst().prefix(2))
+        let gString = String(cleaned.dropFirst(3).prefix(2))
+        let bString = String(cleaned.dropFirst(5).prefix(2))
+
+        guard let r = UInt8(rString, radix: 16),
+              let g = UInt8(gString, radix: 16),
+              let b = UInt8(bString, radix: 16) else {
+            return nil
+        }
+
+        return Color(
+            red: Double(r) / 255.0,
+            green: Double(g) / 255.0,
+            blue: Double(b) / 255.0
+        )
+    }
+}
+
+// MARK: - Reader Selection State
+
+struct ReaderSelectionState {
+    var selectedText: String = ""
+    var pageIndex: Int?
+    var overlayBounds: CGRect?
+    var pageBounds: CGRect?
+
+    var normalizedText: String {
+        selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var isValidForToolbar: Bool {
+        !normalizedText.isEmpty &&
+        (overlayBounds?.width ?? 0) > 0 &&
+        (overlayBounds?.height ?? 0) > 0
+    }
+
+    var isValidForHighlight: Bool {
+        !normalizedText.isEmpty &&
+        pageIndex != nil &&
+        (pageBounds?.width ?? 0) > 0 &&
+        (pageBounds?.height ?? 0) > 0
+    }
+
+    static func makeHighlight(from state: ReaderSelectionState) -> BookHighlight? {
+        guard state.isValidForHighlight,
+              let pageIndex = state.pageIndex,
+              let pageBounds = state.pageBounds else {
+            return nil
+        }
+
+        return BookHighlight(
+            pageIndex: pageIndex,
+            text: state.normalizedText,
+            boundsX: pageBounds.origin.x,
+            boundsY: pageBounds.origin.y,
+            boundsWidth: pageBounds.width,
+            boundsHeight: pageBounds.height
+        )
     }
 }
 

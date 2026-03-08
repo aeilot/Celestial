@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 struct StatsView: View {
     @Environment(BookStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("useSerifFont") private var useSerifFont = false
     @State private var editingName = false
     @State private var nameInput = ""
 
@@ -19,8 +20,8 @@ struct StatsView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("个人统计")
-                    .font(.headline)
+                Text(LocalizedStringKey("个人统计"))
+                    .font(.system(.headline, design: useSerifFont ? .serif : .default))
                 Spacer()
                 Button(action: { dismiss() }) {
                     Image(systemName: "xmark.circle.fill")
@@ -96,14 +97,14 @@ struct StatsView: View {
             // Name
             if editingName {
                 HStack {
-                    TextField("你的名字", text: $nameInput)
+                    TextField(LocalizedStringKey("你的名字"), text: $nameInput)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 160)
                         .onSubmit {
                             store.userName = nameInput
                             editingName = false
                         }
-                    Button("保存") {
+                    Button(LocalizedStringKey("保存")) {
                         store.userName = nameInput
                         editingName = false
                     }
@@ -117,7 +118,7 @@ struct StatsView: View {
                 }) {
                     HStack(spacing: 4) {
                         Text(store.userName)
-                            .font(.title3)
+                            .font(.system(.title3, design: useSerifFont ? .serif : .default))
                             .fontWeight(.semibold)
                         Image(systemName: "pencil")
                             .font(.caption)
@@ -138,22 +139,22 @@ struct StatsView: View {
             GridItem(.flexible()),
             GridItem(.flexible())
         ], spacing: 16) {
-            statCard(title: "书籍", value: "\(store.books.count)", icon: "book.closed", color: .blue)
-            statCard(title: "高亮", value: "\(store.totalHighlights)", icon: "highlighter", color: .yellow)
-            statCard(title: "笔记", value: "\(store.totalNotes)", icon: "note.text", color: .green)
-            statCard(title: "单词", value: "\(store.vocabulary.count)", icon: "character.book.closed", color: .purple)
+            statCard(title: LocalizedStringKey("书架"), value: "\(store.books.count)", icon: "book.closed", color: .blue)
+            statCard(title: LocalizedStringKey("高亮"), value: "\(store.totalHighlights)", icon: "highlighter", color: .yellow)
+            statCard(title: LocalizedStringKey("笔记"), value: "\(store.totalNotes)", icon: "note.text", color: .green)
+            statCard(title: LocalizedStringKey("单词本"), value: "\(store.vocabulary.count)", icon: "character.book.closed", color: .purple)
         }
     }
 
-    private func statCard(title: String, value: String, icon: String, color: Color) -> some View {
+    private func statCard(title: LocalizedStringKey, value: String, icon: String, color: Color) -> some View {
         VStack(spacing: 8) {
             Image(systemName: icon)
                 .font(.title2)
                 .foregroundStyle(color)
             Text(value)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .font(.system(size: 24, weight: .bold, design: useSerifFont ? .serif : .rounded))
             Text(title)
-                .font(.caption)
+                .font(.system(.caption, design: useSerifFont ? .serif : .default))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -166,14 +167,14 @@ struct StatsView: View {
 
     private var recentBooksSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("最近阅读")
-                .font(.subheadline)
+            Text(LocalizedStringKey("最近阅读"))
+                .font(.system(.subheadline, design: useSerifFont ? .serif : .default))
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
 
             if store.recentBooks.isEmpty {
-                Text("暂无阅读记录")
-                    .font(.callout)
+                Text(LocalizedStringKey("暂无阅读记录"))
+                    .font(.system(.callout, design: useSerifFont ? .serif : .default))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
@@ -184,11 +185,11 @@ struct StatsView: View {
                             .foregroundStyle(.blue)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(book.title)
-                                .font(.callout)
+                                .font(.system(.callout, design: useSerifFont ? .serif : .default))
                                 .lineLimit(1)
                             if let date = book.lastOpened {
                                 Text(date, style: .relative)
-                                    .font(.caption2)
+                                    .font(.system(.caption2, design: useSerifFont ? .serif : .default))
                                     .foregroundStyle(.tertiary)
                             }
                         }
@@ -207,7 +208,7 @@ struct StatsView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowedContentTypes = [.image]
-        panel.message = "选择头像图片"
+        panel.message = String(localized: "stats.avatarPicker.message")
 
         if panel.runModal() == .OK, let url = panel.url {
             if let data = try? Data(contentsOf: url) {
