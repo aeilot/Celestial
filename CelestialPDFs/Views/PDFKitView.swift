@@ -15,6 +15,11 @@ struct PDFKitView: NSViewRepresentable {
     @Binding var selectionBounds: CGRect?
     @Binding var selectionPageIndex: Int?
     var highlights: [BookHighlight]
+    var displayMode: PDFDisplayMode = .autoScale
+
+    enum PDFDisplayMode {
+        case fitWidth, fitPage, autoScale
+    }
 
     func makeNSView(context: Context) -> PDFView {
         let pdfView = PDFView()
@@ -27,6 +32,9 @@ struct PDFKitView: NSViewRepresentable {
         // Enable zoom
         pdfView.minScaleFactor = 0.25
         pdfView.maxScaleFactor = 5.0
+
+        // Apply display mode
+        applyDisplayMode(displayMode, to: pdfView)
 
         // Apply existing highlights
         applyHighlights(to: pdfView)
@@ -55,7 +63,29 @@ struct PDFKitView: NSViewRepresentable {
         if pdfView.document !== document {
             pdfView.document = document
         }
+        applyDisplayMode(displayMode, to: pdfView)
         applyHighlights(to: pdfView)
+    }
+
+    private func applyDisplayMode(_ mode: PDFDisplayMode, to pdfView: PDFView) {
+        switch mode {
+        case .fitWidth:
+            pdfView.autoScales = false
+            if let page = pdfView.currentPage {
+                let pageWidth = page.bounds(for: .mediaBox).width
+                let viewWidth = pdfView.bounds.width
+                pdfView.scaleFactor = viewWidth / pageWidth
+            }
+        case .fitPage:
+            pdfView.autoScales = false
+            if let page = pdfView.currentPage {
+                let pageHeight = page.bounds(for: .mediaBox).height
+                let viewHeight = pdfView.bounds.height
+                pdfView.scaleFactor = viewHeight / pageHeight
+            }
+        case .autoScale:
+            pdfView.autoScales = true
+        }
     }
 
     private func applyHighlights(to pdfView: PDFView) {

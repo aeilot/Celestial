@@ -9,40 +9,37 @@ import SwiftUI
 
 struct NotesListView: View {
     @Environment(BookStore.self) private var store
+    @State private var containerWidth: CGFloat = 800
 
     var body: some View {
         Group {
             if store.allNotes.isEmpty {
                 emptyView
             } else {
-                notesList
+                notesGrid
             }
         }
         .navigationTitle("笔记")
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { containerWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, newWidth in
+                        containerWidth = newWidth
+                    }
+            }
+        )
     }
 
-    private var notesList: some View {
-        List {
-            // Group notes by book
-            ForEach(booksWithNotes, id: \.id) { book in
-                Section {
-                    ForEach(book.notes.sorted(by: { $0.dateModified > $1.dateModified })) { note in
-                        NoteRow(book: book, note: note)
-                    }
-                } header: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "book.closed")
-                            .foregroundStyle(.secondary)
-                        Text(book.title)
-                            .font(.headline)
-                    }
+    private var notesGrid: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280, maximum: 320), spacing: 16)], spacing: 16) {
+                ForEach(store.allNotes, id: \.note.id) { item in
+                    NoteCard(book: item.book, note: item.note)
                 }
             }
+            .padding(16)
         }
-    }
-
-    private var booksWithNotes: [PDFBook] {
-        store.books.filter { !$0.notes.isEmpty }
     }
 
     private var emptyView: some View {
@@ -109,5 +106,41 @@ struct NoteRow: View {
                 .foregroundStyle(.green)
                 .font(.caption)
         }
+    }
+}
+
+struct NoteCard: View {
+    let book: PDFBook
+    let note: BookNote
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(book.title)
+                    .font(.system(.caption, design: .serif))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+            }
+
+            Text(note.content)
+                .font(.system(.body, design: .serif))
+                .lineLimit(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer()
+
+            Text(note.dateModified, style: .date)
+                .font(.system(.caption2, design: .serif))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(12)
+        .frame(width: 280, height: 200)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+        )
     }
 }

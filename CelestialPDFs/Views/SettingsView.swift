@@ -12,13 +12,39 @@ struct SettingsView: View {
     @State private var apiKey: String = AISettings.apiKey
     @State private var modelName: String = AISettings.modelName
     @State private var showKey = false
+    @AppStorage("useSerifFont") private var useSerifFont = false
+    @AppStorage("showFloatingToolbar") private var showFloatingToolbar = true
 
     var body: some View {
+        TabView {
+            aiSettingsTab
+                .tabItem {
+                    Label("AI", systemImage: "sparkles")
+                }
+
+            appearanceTab
+                .tabItem {
+                    Label("外观", systemImage: "paintbrush")
+                }
+
+            readingTab
+                .tabItem {
+                    Label("阅读", systemImage: "book")
+                }
+        }
+        .frame(width: 500, height: 350)
+        .onDisappear {
+            AISettings.endpoint = endpoint
+            AISettings.apiKey = apiKey
+            AISettings.modelName = modelName
+        }
+    }
+
+    private var aiSettingsTab: some View {
         Form {
             Section("AI 服务配置") {
                 TextField("API Endpoint", text: $endpoint)
                     .textFieldStyle(.roundedBorder)
-                    .help("OpenAI 兼容接口地址，例如 https://api.openai.com/v1")
 
                 HStack {
                     if showKey {
@@ -36,21 +62,26 @@ struct SettingsView: View {
 
                 TextField("模型名称", text: $modelName)
                     .textFieldStyle(.roundedBorder)
-                    .help("例如 gpt-4o-mini, deepseek-chat, moonshot-v1-8k")
-            }
-
-            Section {
-                Text("支持任何 OpenAI 兼容 API（DeepSeek、Moonshot、Ollama 等）")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 450, height: 280)
-        .onDisappear {
-            AISettings.endpoint = endpoint
-            AISettings.apiKey = apiKey
-            AISettings.modelName = modelName
+    }
+
+    private var appearanceTab: some View {
+        Form {
+            Section("字体") {
+                Toggle("使用衬线字体", isOn: $useSerifFont)
+            }
         }
+        .formStyle(.grouped)
+    }
+
+    private var readingTab: some View {
+        Form {
+            Section("工具栏") {
+                Toggle("显示浮动工具栏", isOn: $showFloatingToolbar)
+            }
+        }
+        .formStyle(.grouped)
     }
 }

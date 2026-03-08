@@ -1,0 +1,341 @@
+{
+  "sourceLanguage" : "zh-Hans",
+  "strings" : {
+    "「%@」" : {
+
+    },
+    "%lld 本书" : {
+
+    },
+    "%lld 本书 · %lld 单词" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld 本书 · %2$lld 单词"
+          }
+        }
+      }
+    },
+    "+%lld" : {
+
+    },
+    "AI" : {
+
+    },
+    "AI 助手" : {
+
+    },
+    "AI 服务配置" : {
+
+    },
+    "API Endpoint" : {
+
+    },
+    "API Key" : {
+
+    },
+    "vocabulary.delete" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除"
+          }
+        }
+      }
+    },
+    "vocabulary.empty.hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select words while reading PDFs to automatically save them here"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在阅读 PDF 时选中单词查词，将自动记录到此处"
+          }
+        }
+      }
+    },
+    "vocabulary.empty.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vocabulary is empty"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单词本为空"
+          }
+        }
+      }
+    },
+    "vocabulary.page" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 页"
+          }
+        }
+      }
+    },
+    "vocabulary.search" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search words…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索单词…"
+          }
+        }
+      }
+    },
+    "vocabulary.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vocabulary"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单词本"
+          }
+        }
+      }
+    },
+    "个人统计" : {
+
+    },
+    "书架" : {
+
+    },
+    "作者" : {
+
+    },
+    "你的名字" : {
+
+    },
+    "使用衬线字体" : {
+
+    },
+    "保存" : {
+
+    },
+    "最近阅读" : {
+
+    },
+    "列表视图" : {
+
+    },
+    "删除" : {
+
+    },
+    "刷新" : {
+
+    },
+    "单词本" : {
+
+    },
+    "取消" : {
+
+    },
+    "在阅读 PDF 时可以添加笔记" : {
+
+    },
+    "外观" : {
+
+    },
+    "字体" : {
+
+    },
+    "导入 PDF 文件" : {
+
+    },
+    "尚未选择 PDF 目录" : {
+
+    },
+    "工具栏" : {
+
+    },
+    "已选中 %lld 个字符" : {
+
+    },
+    "已选中文本将作为上下文" : {
+
+    },
+    "搜索书名、作者…" : {
+
+    },
+    "放大" : {
+
+    },
+    "放大 (⌘+)" : {
+
+    },
+    "文件夹" : {
+
+    },
+    "显示" : {
+
+    },
+    "显示模式" : {
+
+    },
+    "显示浮动工具栏" : {
+
+    },
+    "暂无笔记" : {
+
+    },
+    "暂无阅读记录" : {
+
+    },
+    "有什么想问的？" : {
+
+    },
+    "查词" : {
+
+    },
+    "查询选中单词" : {
+
+    },
+    "标签" : {
+
+    },
+    "标题" : {
+
+    },
+    "模型名称" : {
+
+    },
+    "正在扫描 PDF 目录" : {
+
+    },
+    "没有找到 PDF 文件" : {
+
+    },
+    "添加 PDF" : {
+
+    },
+    "添加标签" : {
+
+    },
+    "清除对话" : {
+
+    },
+    "点击上方「选择目录」按钮来指定 PDF 文件所在的文件夹" : {
+
+    },
+    "视图模式" : {
+
+    },
+    "笔记" : {
+
+    },
+    "第 %lld / %lld 页" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "第 %1$lld / %2$lld 页"
+          }
+        }
+      }
+    },
+    "编辑书籍信息" : {
+
+    },
+    "编辑信息" : {
+
+    },
+    "缩小" : {
+
+    },
+    "缩小 (⌘-)" : {
+
+    },
+    "网格视图" : {
+
+    },
+    "自动缩放" : {
+
+    },
+    "试试其他搜索关键词" : {
+
+    },
+    "输入问题…" : {
+
+    },
+    "返回书架" : {
+
+    },
+    "适应宽度" : {
+
+    },
+    "适应页面" : {
+
+    },
+    "选中 PDF 中的文字可以作为上下文提问" : {
+
+    },
+    "选择 PDF 库目录" : {
+
+    },
+    "选择目录" : {
+
+    },
+    "重新扫描目录" : {
+
+    },
+    "问 AI" : {
+
+    },
+    "阅读" : {
+
+    },
+    "预览" : {
+
+    },
+    "高亮" : {
+
+    },
+    "高亮选中文字" : {
+
+    }
+  },
+  "version" : "1.0"
+}

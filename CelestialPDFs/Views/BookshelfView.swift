@@ -79,11 +79,24 @@ struct BookshelfView: View {
             } else if filteredBooks.isEmpty {
                 emptyBooksView
             } else {
-                switch viewMode {
-                case .grid:
-                    shelfGridContent(width: containerWidth)
-                case .list:
-                    listView
+                VStack(spacing: 0) {
+                    switch viewMode {
+                    case .grid:
+                        shelfGridContent(width: containerWidth)
+                    case .list:
+                        listView
+                    }
+
+                    Spacer()
+
+                    HStack {
+                        Spacer()
+                        Text("\(filteredBooks.count) 本书")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.vertical, 12)
                 }
             }
         }

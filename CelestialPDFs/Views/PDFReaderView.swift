@@ -21,59 +21,78 @@ struct PDFReaderView: View {
     @State private var rightPanel: RightPanel = .none
     @State private var pageCount = 0
     @State private var showFloatingToolbar = false
+    @State private var isLoadingDocument = false
+    @State private var displayMode: PDFKitView.PDFDisplayMode = .autoScale
 
     enum RightPanel {
         case none, notes, ai
     }
 
     var body: some View {
-        HSplitView {
-            // PDF content
-            VStack(spacing: 0) {
-                // Toolbar
-                readerToolbar
-                Divider()
+        GeometryReader { geometry in
+            HSplitView {
+                // PDF content
+                VStack(spacing: 0) {
+                    // Toolbar
+                    readerToolbar
+                    Divider()
 
-                // PDF view with floating toolbar overlay
-                GeometryReader { geo in
-                    ZStack(alignment: .topLeading) {
-                        PDFKitView(
-                            document: document,
-                            selectedText: $selectedText,
-                            currentPageIndex: $currentPageIndex,
-                            selectionBounds: $selectionBounds,
-                            selectionPageIndex: $selectionPageIndex,
-                            highlights: currentBook.highlights
-                        )
-
-                        // Floating toolbar near selection
-                        if showFloatingToolbar && !selectedText.isEmpty {
-                            floatingToolbar
-                                .fixedSize()
-                                .position(
-                                    floatingToolbarPosition(
-                                        in: geo.size
-                                    )
+                    // PDF view with floating toolbar overlay
+                    GeometryReader { geo in
+                        ZStack(alignment: .topLeading) {
+                            if isLoadingDocument {
+                                VStack {
+                                    ProgressView()
+                                        .scaleEffect(1.5)
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            } else {
+                                PDFKitView(
+                                    document: document,
+                                    selectedText: $selectedText,
+                                    currentPageIndex: $currentPageIndex,
+                                    selectionBounds: $selectionBounds,
+                                    selectionPageIndex: $selectionPageIndex,
+                                    highlights: currentBook.highlights,
+                                    displayMode: displayMode
                                 )
-                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                            }
+
+                            // Floating toolbar near selection
+                            if showFloatingToolbar && !selectedText.isEmpty {
+                                floatingToolbar
+                                    .fixedSize()
+                                    .position(
+                                        floatingToolbarPosition(
+                                            in: geo.size
+                                        )
+                                    )
+                                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                            }
                         }
                     }
+                    .animation(.spring(response: 0.25), value: showFloatingToolbar)
+
+                    // Status bar
+                    statusBar
                 }
-                .animation(.spring(response: 0.25), value: showFloatingToolbar)
 
-                // Status bar
-                statusBar
-            }
-
-            // Right Panel
-            if rightPanel != .none {
-                rightPanelView
-                    .frame(minWidth: 280, idealWidth: 320, maxWidth: 400)
+                // Right Panel
+                if rightPanel != .none {
+                    rightPanelView
+                        .frame(minWidth: 280, idealWidth: 320, maxWidth: geometry.size.width / 2)
+                }
             }
         }
         .onAppear {
-            document = store.pdfDocument(for: book)
-            pageCount = document?.pageCount ?? 0
+            Task {
+                isLoadingDocument = true
+                document = await Task.detached {
+                    store.pdfDocument(for: book)
+                }.value
+                pageCount = document?.pageCount ?? 0
+                isLoadingDocument = false
+            }
         }
         .onChange(of: selectedText) {
             showFloatingToolbar = !selectedText.isEmpty
@@ -145,32 +164,22 @@ struct PDFReaderView: View {
 
     /// Compute the position for the floating toolbar relative to the selection bounds.
     private func floatingToolbarPosition(in containerSize: CGSize) -> CGPoint {
-        let toolbarWidth: CGFloat = 320  // approximate width of the floating toolbar
-        let toolbarHeight: CGFloat = 40  // approximate height
+        let toolbarWidth: CGFloat = 320
+        let toolbarHeight: CGFloat = 40
 
         guard let bounds = selectionBounds else {
-            // Fallback to center-top
             return CGPoint(x: containerSize.width / 2, y: toolbarHeight / 2 + 8)
         }
 
-        // Center horizontally over the selection, clamped to container
-        let idealX = bounds.midX
         let clampedX = min(
-            max(idealX, toolbarWidth / 2 + 8),
+            max(bounds.midX, toolbarWidth / 2 + 8),
             containerSize.width - toolbarWidth / 2 - 8
         )
 
-        // Place above the selection (selectionBounds.minY is the top of selection in view coords)
-        let idealY = bounds.minY - toolbarHeight / 2 - 8
-        // If not enough space above, place below the selection
-        let y: CGFloat
-        if idealY < toolbarHeight / 2 + 4 {
-            y = bounds.maxY + toolbarHeight / 2 + 8
-        } else {
-            y = idealY
-        }
+        // Position 5px above selection
+        let y = bounds.minY - toolbarHeight / 2 - 5
 
-        return CGPoint(x: clampedX, y: y)
+        return CGPoint(x: clampedX, y: max(y, toolbarHeight / 2 + 8))
     }
 
     // MARK: - Toolbar
@@ -191,6 +200,25 @@ struct PDFReaderView: View {
                 .lineLimit(1)
 
             Spacer()
+
+            // Display mode buttons
+            Menu {
+                Button(action: { displayMode = .autoScale }) {
+                    Label("自动缩放", systemImage: displayMode == .autoScale ? "checkmark" : "")
+                }
+                Button(action: { displayMode = .fitWidth }) {
+                    Label("适应宽度", systemImage: displayMode == .fitWidth ? "checkmark" : "")
+                }
+                Button(action: { displayMode = .fitPage }) {
+                    Label("适应页面", systemImage: displayMode == .fitPage ? "checkmark" : "")
+                }
+            } label: {
+                Label("显示", systemImage: "arrow.up.left.and.arrow.down.right")
+            }
+            .help("显示模式")
+
+            Divider()
+                .frame(height: 20)
 
             // Zoom controls
             Button(action: { /* zoom handled via PDFView */ }) {
@@ -301,6 +329,7 @@ struct PDFReaderView: View {
             boundsHeight: bounds.height
         )
         store.addHighlight(to: book.id, highlight: highlight)
+        selectedText = ""
         showFloatingToolbar = false
     }
 

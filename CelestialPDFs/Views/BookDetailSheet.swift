@@ -14,7 +14,8 @@ struct BookDetailSheet: View {
     let book: PDFBook
     @State private var title: String = ""
     @State private var author: String = ""
-    @State private var tagsText: String = ""
+    @State private var tags: [String] = []
+    @State private var newTag: String = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,8 +39,36 @@ struct BookDetailSheet: View {
             Form {
                 TextField("标题", text: $title)
                 TextField("作者", text: $author)
-                TextField("标签（逗号分隔）", text: $tagsText)
-                    .help("多个标签用英文逗号分隔，例如：编程, Swift, macOS")
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("标签")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    FlowLayout(spacing: 6) {
+                        ForEach(tags, id: \.self) { tag in
+                            HStack(spacing: 4) {
+                                Text(tag)
+                                    .font(.caption)
+                                Button(action: { removeTag(tag) }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.caption2)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.accentColor.opacity(0.2))
+                            .clipShape(Capsule())
+                        }
+                    }
+
+                    TextField("添加标签", text: $newTag)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit {
+                            addTag()
+                        }
+                }
             }
             .formStyle(.grouped)
             .padding()
@@ -61,18 +90,27 @@ struct BookDetailSheet: View {
         .onAppear {
             title = book.title
             author = book.author
-            tagsText = book.tags.joined(separator: ", ")
+            tags = book.tags
         }
+    }
+
+    private func addTag() {
+        let trimmed = newTag.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty && !tags.contains(trimmed) {
+            tags.append(trimmed)
+            newTag = ""
+        }
+    }
+
+    private func removeTag(_ tag: String) {
+        tags.removeAll { $0 == tag }
     }
 
     private func save() {
         var updated = book
         updated.title = title.trimmingCharacters(in: .whitespaces)
         updated.author = author.trimmingCharacters(in: .whitespaces)
-        updated.tags = tagsText
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        updated.tags = tags
         store.updateBook(updated)
         dismiss()
     }

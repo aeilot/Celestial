@@ -10,15 +10,23 @@ import SwiftUI
 struct VocabularyView: View {
     @Environment(BookStore.self) private var store
     @State private var searchWord = ""
+    @State private var filteredVocabulary: [VocabularyEntry] = []
 
-    private var filteredVocabulary: [VocabularyEntry] {
-        let vocab = store.vocabulary
-        if searchWord.isEmpty {
-            return vocab.sorted { $0.dateAdded > $1.dateAdded }
+    private func updateFilteredVocabulary() {
+        Task {
+            let vocab = store.vocabulary
+            let filtered: [VocabularyEntry]
+            if searchWord.isEmpty {
+                filtered = vocab.sorted { $0.dateAdded > $1.dateAdded }
+            } else {
+                filtered = vocab.filter {
+                    $0.word.localizedCaseInsensitiveContains(searchWord)
+                }.sorted { $0.dateAdded > $1.dateAdded }
+            }
+            await MainActor.run {
+                filteredVocabulary = filtered
+            }
         }
-        return vocab.filter {
-            $0.word.localizedCaseInsensitiveContains(searchWord)
-        }.sorted { $0.dateAdded > $1.dateAdded }
     }
 
     var body: some View {
@@ -29,14 +37,23 @@ struct VocabularyView: View {
                 vocabularyList
             }
         }
-        .navigationTitle("单词本")
+        .navigationTitle(LocalizedStringKey("vocabulary.title"))
+        .onAppear {
+            updateFilteredVocabulary()
+        }
+        .onChange(of: searchWord) {
+            updateFilteredVocabulary()
+        }
+        .onChange(of: store.vocabulary.count) {
+            updateFilteredVocabulary()
+        }
     }
 
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("搜索单词…", text: $searchWord)
+            TextField(LocalizedStringKey("vocabulary.search"), text: $searchWord)
                 .textFieldStyle(.plain)
             if !searchWord.isEmpty {
                 Button(action: { searchWord = "" }) {
@@ -83,7 +100,7 @@ struct VocabularyView: View {
 
                     HStack {
                         if let page = entry.pageIndex {
-                            Text("第 \(page + 1) 页")
+                            Text(String(format: NSLocalizedString("vocabulary.page", comment: ""), page + 1))
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
@@ -95,7 +112,7 @@ struct VocabularyView: View {
                 }
                 .padding(.vertical, 4)
                 .contextMenu {
-                    Button("删除", role: .destructive) {
+                    Button(LocalizedStringKey("vocabulary.delete"), role: .destructive) {
                         store.removeVocabulary(entry)
                     }
                 }
@@ -109,10 +126,10 @@ struct VocabularyView: View {
             Image(systemName: "character.book.closed")
                 .font(.system(size: 56))
                 .foregroundStyle(.secondary)
-            Text("单词本为空")
+            Text(LocalizedStringKey("vocabulary.empty.title"))
                 .font(.title3)
                 .fontWeight(.medium)
-            Text("在阅读 PDF 时选中单词查词，将自动记录到此处")
+            Text(LocalizedStringKey("vocabulary.empty.hint"))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }

@@ -13,14 +13,8 @@ struct ReaderNotesView: View {
     var currentPage: Int
     var selectedText: String
 
-    @State private var newNoteContent = ""
-    @State private var newNoteScope: NoteScopeChoice = .page
-
-    enum NoteScopeChoice: String, CaseIterable {
-        case highlight = "划线笔记"
-        case page = "页面笔记"
-        case book = "全书笔记"
-    }
+    @State private var editingNote: BookNote?
+    @State private var showEditor = false
 
     private var currentBook: PDFBook {
         store.books.first(where: { $0.id == book.id }) ?? book
@@ -28,165 +22,65 @@ struct ReaderNotesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
+            if showEditor {
+                NoteEditorView(
+                    book: book,
+                    currentPage: currentPage,
+                    note: editingNote,
+                    onSave: { note in
+                        if let existing = editingNote {
+                            store.updateNote(in: book.id, note: note)
+                        } else {
+                            store.addNote(to: book.id, note: note)
+                        }
+                        showEditor = false
+                        editingNote = nil
+                    },
+                    onCancel: {
+                        showEditor = false
+                        editingNote = nil
+                    }
+                )
+            } else {
+                notesList
+            }
+        }
+    }
+
+    private var notesList: some View {
+        VStack(spacing: 0) {
             HStack {
                 Text("笔记")
                     .font(.headline)
                 Spacer()
-                Text("\(currentBook.notes.count)")
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.15))
-                    .clipShape(Capsule())
+                Button(action: { showEditor = true }) {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.plain)
             }
             .padding()
 
             Divider()
 
-            // Notes list
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(sortedNotes) { note in
-                        noteCard(note)
-                    }
-                }
-                .padding()
-            }
-
-            Divider()
-
-            // Add note section
-            addNoteSection
-        }
-        .background(Color(nsColor: .controlBackgroundColor))
-    }
-
-    private var sortedNotes: [BookNote] {
-        currentBook.notes.sorted { $0.dateCreated > $1.dateCreated }
-    }
-
-    private func noteCard(_ note: BookNote) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                scopeLabel(note.scope)
-                Spacer()
-                Text(note.dateModified, style: .relative)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                Button(action: { store.removeNote(from: book.id, noteId: note.id) }) {
-                    Image(systemName: "trash")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-
-            // Markdown rendered content
-            MarkdownTextView(content: note.content)
-
-            // Show highlight text if applicable
-            if case .highlight(let hId) = note.scope,
-               let h = currentBook.highlights.first(where: { $0.id == hId }) {
-                Text("「\(h.text)」")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .padding(6)
-                    .background(Color.orange.opacity(0.08))
-                    .cornerRadius(4)
-            }
-        }
-        .padding(10)
-        .background(Color(nsColor: .textBackgroundColor))
-        .cornerRadius(8)
-        .shadow(color: .black.opacity(0.04), radius: 2, y: 1)
-    }
-
-    @ViewBuilder
-    private func scopeLabel(_ scope: NoteScope) -> some View {
-        switch scope {
-        case .highlight:
-            Label("划线", systemImage: "highlighter")
-                .font(.caption)
-                .foregroundStyle(.yellow)
-        case .page(let p):
-            Label("第 \(p + 1) 页", systemImage: "doc.text")
-                .font(.caption)
-                .foregroundStyle(.blue)
-        case .book:
-            Label("全书", systemImage: "book.closed")
-                .font(.caption)
-                .foregroundStyle(.green)
-        }
-    }
-
-    // MARK: - Add Note
-
-    private var addNoteSection: some View {
-        VStack(spacing: 8) {
-            Picker("类型", selection: $newNoteScope) {
-                ForEach(NoteScopeChoice.allCases, id: \.self) { choice in
-                    Text(choice.rawValue).tag(choice)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("支持 Markdown 语法")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-
-                HStack(alignment: .top) {
-                    TextEditor(text: $newNoteContent)
-                        .font(.callout)
-                        .frame(minHeight: 40, maxHeight: 100)
-                        .scrollContentBackground(.hidden)
-                        .background(Color(nsColor: .textBackgroundColor))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                        )
-
-                    Button(action: addNote) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(Color.accentColor)
+            List {
+                ForEach(currentBook.notes.sorted { $0.dateCreated > $1.dateCreated }) { note in
+                    Button(action: {
+                        editingNote = note
+                        showEditor = true
+                    }) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(note.content)
+                                .font(.system(.body, design: .serif))
+                                .lineLimit(3)
+                            Text(note.dateModified, style: .relative)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .buttonStyle(.plain)
-                    .disabled(newNoteContent.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
-        .padding(12)
-        .background(.bar)
-    }
-
-    private func addNote() {
-        let content = newNoteContent.trimmingCharacters(in: .whitespaces)
-        guard !content.isEmpty else { return }
-
-        let scope: NoteScope
-        switch newNoteScope {
-        case .highlight:
-            // Find the most recent highlight on the current page
-            if let lastHighlight = currentBook.highlights
-                .filter({ $0.pageIndex == currentPage })
-                .sorted(by: { $0.dateCreated > $1.dateCreated })
-                .first {
-                scope = .highlight(lastHighlight.id)
-            } else {
-                scope = .page(currentPage) // fallback
-            }
-        case .page:
-            scope = .page(currentPage)
-        case .book:
-            scope = .book
-        }
-
-        let note = BookNote(scope: scope, content: content)
-        store.addNote(to: book.id, note: note)
-        newNoteContent = ""
     }
 }
 
@@ -204,6 +98,67 @@ struct MarkdownTextView: View {
             Text(content)
                 .font(.callout)
                 .textSelection(.enabled)
+        }
+    }
+}
+
+struct NoteEditorView: View {
+    let book: PDFBook
+    let currentPage: Int
+    let note: BookNote?
+    let onSave: (BookNote) -> Void
+    let onCancel: () -> Void
+
+    @State private var content: String = ""
+    @State private var scope: NoteScope = .page(0)
+
+    var body: some View {
+        HSplitView {
+            VStack(spacing: 0) {
+                HStack {
+                    Button("取消", action: onCancel)
+                    Spacer()
+                    Button("保存") {
+                        let newNote = BookNote(
+                            id: note?.id ?? UUID(),
+                            scope: scope,
+                            content: content,
+                            dateCreated: note?.dateCreated ?? Date(),
+                            dateModified: Date()
+                        )
+                        onSave(newNote)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(content.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .padding()
+
+                Divider()
+
+                TextEditor(text: $content)
+                    .font(.system(.body, design: .serif))
+                    .padding(8)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("预览")
+                    .font(.headline)
+                    .padding(.horizontal)
+                    .padding(.top)
+
+                Divider()
+
+                ScrollView {
+                    MarkdownTextView(content: content)
+                        .font(.system(.body, design: .serif))
+                        .padding()
+                }
+            }
+            .frame(minWidth: 200)
+        }
+        .onAppear {
+            content = note?.content ?? ""
+            scope = note?.scope ?? .page(currentPage)
         }
     }
 }
