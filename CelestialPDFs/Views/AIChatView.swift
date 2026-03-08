@@ -10,12 +10,19 @@ import PDFKit
 
 struct AIChatView: View {
     @Environment(BookStore.self) private var store
+    @AppStorage("useSerifFont") private var useSerifFont = false
     @State private var aiService = AIService()
 
     let book: PDFBook
     var selectedText: String
     var currentPage: Int
     var document: PDFDocument?
+    var contextMode: ContextMode = .page
+
+    enum ContextMode {
+        case page
+        case book
+    }
 
     @State private var inputText = ""
     @State private var showSettings = false
@@ -27,7 +34,7 @@ struct AIChatView: View {
                 Image(systemName: "sparkles")
                     .foregroundStyle(.purple)
                 Text("AI 助手")
-                    .font(.headline)
+                    .font(.system(.headline, design: useSerifFont ? .serif : .default))
                 Spacer()
                 Button(action: { showSettings = true }) {
                     Image(systemName: "gearshape")
@@ -51,7 +58,7 @@ struct AIChatView: View {
                     Image(systemName: "text.quote")
                         .font(.caption2)
                     Text("已选中文本将作为上下文")
-                        .font(.caption2)
+                        .font(.system(.caption2, design: useSerifFont ? .serif : .default))
                     Spacer()
                 }
                 .foregroundStyle(.secondary)
@@ -88,7 +95,7 @@ struct AIChatView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                     Text(error)
-                        .font(.caption)
+                        .font(.system(.caption, design: useSerifFont ? .serif : .default))
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 12)
@@ -114,10 +121,10 @@ struct AIChatView: View {
                 .font(.system(size: 36))
                 .foregroundStyle(.purple.opacity(0.6))
             Text("有什么想问的？")
-                .font(.callout)
+                .font(.system(.callout, design: useSerifFont ? .serif : .default))
                 .foregroundStyle(.secondary)
             Text("选中 PDF 中的文字可以作为上下文提问")
-                .font(.caption)
+                .font(.system(.caption, design: useSerifFont ? .serif : .default))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
@@ -138,7 +145,7 @@ struct AIChatView: View {
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
                 Text(message.content.isEmpty && aiService.isLoading ? "思考中…" : message.content)
-                    .font(.callout)
+                    .font(.system(.callout, design: useSerifFont ? .serif : .default))
                     .textSelection(.enabled)
                     .padding(10)
                     .background(
@@ -187,10 +194,12 @@ struct AIChatView: View {
         guard !text.isEmpty else { return }
         inputText = ""
 
-        // Build context from selected text or current page
+        // Build context from selected text, current page, or whole book
         var context = ""
         if !selectedText.isEmpty {
             context = "用户选中的文字：\n\(selectedText)"
+        } else if contextMode == .book, let document {
+            context = wholeBookContext(from: document)
         } else if let document = document,
                   let page = document.page(at: currentPage),
                   let pageText = page.string {
@@ -201,5 +210,33 @@ struct AIChatView: View {
         Task {
             await aiService.sendMessage(text, context: context.isEmpty ? nil : context)
         }
+    }
+
+    private func wholeBookContext(from document: PDFDocument) -> String {
+        let maxCharacters = 6000
+        var collected = ""
+
+        for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex),
+                  let text = page.string?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else {
+                continue
+            }
+
+            let block = "第\(pageIndex + 1)页：\n\(text)\n\n"
+            if collected.count + block.count >= maxCharacters {
+                let remaining = max(0, maxCharacters - collected.count)
+                if remaining > 0 {
+                    collected += String(block.prefix(remaining))
+                }
+                break
+            }
+            collected += block
+        }
+
+        if collected.isEmpty {
+            return ""
+        }
+        return "全书内容摘录：\n\(collected)"
     }
 }

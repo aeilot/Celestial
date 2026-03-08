@@ -13,7 +13,7 @@ struct SettingsView: View {
     @State private var modelName: String = AISettings.modelName
     @State private var showKey = false
     @AppStorage("useSerifFont") private var useSerifFont = false
-    @AppStorage("showFloatingToolbar") private var showFloatingToolbar = true
+    @AppStorage("readerToolbarShowsLabels") private var readerToolbarShowsLabels = true
 
     var body: some View {
         TabView {
@@ -79,7 +79,7 @@ struct SettingsView: View {
     private var readingTab: some View {
         Form {
             Section("工具栏") {
-                Toggle("显示浮动工具栏", isOn: $showFloatingToolbar)
+                Toggle("工具栏显示文字", isOn: $readerToolbarShowsLabels)
             }
         }
         .formStyle(.grouped)

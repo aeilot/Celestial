@@ -174,6 +174,11 @@ struct ReaderSelectionState {
     }
 }
 
+struct ReaderSelectionAnchor: Equatable {
+    var pageIndex: Int
+    var firstLinePageBounds: CGRect
+}
+
 // MARK: - BookNote
 
 enum NoteScope: Codable, Hashable {

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct VocabularyView: View {
     @Environment(BookStore.self) private var store
+    @AppStorage("useSerifFont") private var useSerifFont = false
     @State private var searchWord = ""
     @State private var filteredVocabulary: [VocabularyEntry] = []
 
@@ -79,11 +80,11 @@ struct VocabularyView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text(entry.word)
-                            .font(.system(size: 15, weight: .semibold, design: .serif))
+                            .font(.system(size: 15, weight: .semibold, design: useSerifFont ? .serif : .default))
                         Spacer()
                         if let bookTitle = entry.bookTitle, !bookTitle.isEmpty {
                             Text(bookTitle)
-                                .font(.caption2)
+                                .font(.system(.caption2, design: useSerifFont ? .serif : .default))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(Color.accentColor.opacity(0.1))
@@ -93,7 +94,7 @@ struct VocabularyView: View {
 
                     if !entry.definition.isEmpty {
                         Text(entry.definition)
-                            .font(.callout)
+                            .font(.system(.callout, design: useSerifFont ? .serif : .default))
                             .foregroundStyle(.secondary)
                             .lineLimit(3)
                     }
@@ -101,12 +102,12 @@ struct VocabularyView: View {
                     HStack {
                         if let page = entry.pageIndex {
                             Text(String(format: NSLocalizedString("vocabulary.page", comment: ""), page + 1))
-                                .font(.caption2)
+                                .font(.system(.caption2, design: useSerifFont ? .serif : .default))
                                 .foregroundStyle(.tertiary)
                         }
                         Spacer()
                         Text(entry.dateAdded, style: .date)
-                            .font(.caption2)
+                            .font(.system(.caption2, design: useSerifFont ? .serif : .default))
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -127,9 +128,10 @@ struct VocabularyView: View {
                 .font(.system(size: 56))
                 .foregroundStyle(.secondary)
             Text(LocalizedStringKey("vocabulary.empty.title"))
-                .font(.title3)
+                .font(.system(.title3, design: useSerifFont ? .serif : .default))
                 .fontWeight(.medium)
             Text(LocalizedStringKey("vocabulary.empty.hint"))
+                .font(.system(.body, design: useSerifFont ? .serif : .default))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }

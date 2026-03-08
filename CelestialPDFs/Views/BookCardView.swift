@@ -9,6 +9,7 @@ import SwiftUI
 
 struct BookCardView: View {
     @Environment(BookStore.self) private var store
+    @AppStorage("useSerifFont") private var useSerifFont = false
     let book: PDFBook
 
     @State private var thumbnail: NSImage?
@@ -39,7 +40,7 @@ struct BookCardView: View {
                             .font(.system(size: 36))
                             .foregroundStyle(.tertiary)
                         Text(book.title)
-                            .font(.caption)
+                            .font(.system(.caption, design: useSerifFont ? .serif : .default))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .lineLimit(3)
@@ -56,14 +57,14 @@ struct BookCardView: View {
 
             // Title
             Text(book.title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold, design: useSerifFont ? .serif : .default))
                 .lineLimit(2)
                 .truncationMode(.tail)
 
             // Author
             if !book.author.isEmpty {
                 Text(book.author)
-                    .font(.caption)
+                    .font(.system(.caption, design: useSerifFont ? .serif : .default))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }

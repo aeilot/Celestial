@@ -77,6 +77,9 @@
         }
       }
     },
+    "%lld" : {
+
+    },
     "%lld 本书" : {
       "localizations" : {
         "de" : {
@@ -1305,6 +1308,9 @@
         }
       }
     },
+    "为选中文字添加笔记；无选中时新建全书笔记" : {
+
+    },
     "书架" : {
       "localizations" : {
         "de" : {
@@ -2097,6 +2103,9 @@
         }
       }
     },
+    "基于选中文字提问；无选中时按全书上下文提问" : {
+
+    },
     "外观" : {
       "localizations" : {
         "en" : {
@@ -2236,6 +2245,9 @@
           }
         }
       }
+    },
+    "工具栏显示文字" : {
+
     },
     "已选中 %lld 个字符" : {
       "localizations" : {
@@ -2466,6 +2478,7 @@
       }
     },
     "放大" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2694,6 +2707,7 @@
       }
     },
     "显示" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2768,6 +2782,12 @@
           }
         }
       }
+    },
+    "显示或隐藏右侧面板" : {
+
+    },
+    "显示或隐藏左侧目录" : {
+
     },
     "显示模式" : {
       "localizations" : {
@@ -2846,6 +2866,7 @@
       }
     },
     "显示浮动工具栏" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3150,6 +3171,7 @@
       }
     },
     "查词" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3605,6 +3627,9 @@
         }
       }
     },
+    "此 PDF 没有目录" : {
+
+    },
     "没有找到 PDF 文件" : {
       "localizations" : {
         "de" : {
@@ -3984,6 +4009,9 @@
           }
         }
       }
+    },
+    "目录" : {
+
     },
     "视图模式" : {
       "localizations" : {
@@ -4366,6 +4394,7 @@
       }
     },
     "缩小" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4822,6 +4851,7 @@
       }
     },
     "返回书架" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5354,6 +5384,7 @@
       }
     },
     "问 AI" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5659,6 +5690,7 @@
       }
     },
     "高亮选中文字" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 
 struct BookshelfView: View {
     @Environment(BookStore.self) private var store
+    @AppStorage("useSerifFont") private var useSerifFont = false
     var searchText: String = ""
     var filterTag: String? = nil
     var filterFolder: String? = nil
@@ -62,7 +63,7 @@ struct BookshelfView: View {
         return Array(repeating: GridItem(.flexible(), spacing: 24), count: count)
     }
 
-    /// Group books into rows of uniform size for shelf dividers.
+    /// Group books into rows of uniform size for grid rendering.
     private func bookRows(for width: CGFloat) -> [[PDFBook]] {
         let perRow = columnCount(for: width)
         return stride(from: 0, to: filteredBooks.count, by: perRow).map {
@@ -92,7 +93,7 @@ struct BookshelfView: View {
                     HStack {
                         Spacer()
                         Text("\(filteredBooks.count) 本书")
-                            .font(.caption)
+                            .font(.system(.caption, design: useSerifFont ? .serif : .default))
                             .foregroundStyle(.secondary)
                         Spacer()
                     }
@@ -161,14 +162,14 @@ struct BookshelfView: View {
         }
     }
 
-    // MARK: - Shelf Grid with Dividers (Uniform Columns)
+    // MARK: - Shelf Grid (Uniform Columns)
 
     private func shelfGridContent(width: CGFloat) -> some View {
         let cols = gridColumns(for: width)
         let rows = bookRows(for: width)
 
         return LazyVStack(spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, rowBooks in
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, rowBooks in
                 LazyVGrid(columns: cols, spacing: 20) {
                     ForEach(rowBooks) { book in
                         BookCardView(book: book)
@@ -187,8 +188,6 @@ struct BookshelfView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 16)
-
-                shelfDivider
             }
         }
     }
@@ -246,12 +245,12 @@ struct BookshelfView: View {
             // Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(book.title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold, design: useSerifFont ? .serif : .default))
                     .lineLimit(1)
 
                 if !book.author.isEmpty {
                     Text(book.author)
-                        .font(.caption)
+                        .font(.system(.caption, design: useSerifFont ? .serif : .default))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -269,7 +268,7 @@ struct BookshelfView: View {
                         }
                         if book.tags.count > 3 {
                             Text("+\(book.tags.count - 3)")
-                                .font(.system(size: 10))
+                                .font(.system(size: 10, weight: .regular, design: useSerifFont ? .serif : .default))
                                 .foregroundStyle(.tertiary)
                         }
                     }
@@ -281,7 +280,7 @@ struct BookshelfView: View {
             // Date
             if let lastOpened = book.lastOpened {
                 Text(lastOpened, style: .relative)
-                    .font(.caption2)
+                    .font(.system(.caption2, design: useSerifFont ? .serif : .default))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -297,39 +296,6 @@ struct BookshelfView: View {
         return colors[hash % colors.count]
     }
 
-    // MARK: - Shelf Divider
-
-    private var shelfDivider: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(nsColor: .separatorColor).opacity(0.6),
-                            Color(nsColor: .separatorColor).opacity(0.3)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .frame(height: 2)
-
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.black.opacity(0.12),
-                            Color.black.opacity(0.05),
-                            Color.clear
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(height: 12)
-        }
-    }
-
     // MARK: - Empty States
 
     private var emptyLibraryView: some View {
@@ -339,9 +305,10 @@ struct BookshelfView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.secondary)
             Text("尚未选择 PDF 目录")
-                .font(.title2)
+                .font(.system(.title2, design: useSerifFont ? .serif : .default))
                 .fontWeight(.medium)
             Text("点击上方「选择目录」按钮来指定 PDF 文件所在的文件夹")
+                .font(.system(.body, design: useSerifFont ? .serif : .default))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button("选择目录") {
@@ -362,10 +329,11 @@ struct BookshelfView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.secondary)
             Text("没有找到 PDF 文件")
-                .font(.title2)
+                .font(.system(.title2, design: useSerifFont ? .serif : .default))
                 .fontWeight(.medium)
             if !searchText.isEmpty {
                 Text("试试其他搜索关键词")
+                    .font(.system(.body, design: useSerifFont ? .serif : .default))
                     .foregroundStyle(.secondary)
             }
             Spacer()

@@ -94,6 +94,7 @@ struct ContentView: View {
 
 struct SidebarView: View {
     @Environment(BookStore.self) private var store
+    @AppStorage("useSerifFont") private var useSerifFont = false
     @Binding var selection: SidebarItem?
     @Binding var searchText: String
     @State private var showStats = false
@@ -133,6 +134,7 @@ struct SidebarView: View {
                 }
             }
         }
+        .font(.system(.body, design: useSerifFont ? .serif : .default))
         .listStyle(.sidebar)
         .searchable(text: $searchText, prompt: "搜索书名、作者…")
         .safeAreaInset(edge: .bottom) {
@@ -165,10 +167,10 @@ struct SidebarView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(store.userName)
-                        .font(.caption)
+                        .font(.system(.caption, design: useSerifFont ? .serif : .default))
                         .fontWeight(.medium)
                     Text("\(store.books.count) 本书 · \(store.vocabulary.count) 单词")
-                        .font(.caption2)
+                        .font(.system(.caption2, design: useSerifFont ? .serif : .default))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()

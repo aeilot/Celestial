@@ -9,6 +9,7 @@ import SwiftUI
 
 struct NotesListView: View {
     @Environment(BookStore.self) private var store
+    @AppStorage("useSerifFont") private var useSerifFont = false
     @State private var containerWidth: CGFloat = 800
 
     var body: some View {
@@ -48,9 +49,10 @@ struct NotesListView: View {
                 .font(.system(size: 56))
                 .foregroundStyle(.secondary)
             Text("暂无笔记")
-                .font(.title3)
+                .font(.system(.title3, design: useSerifFont ? .serif : .default))
                 .fontWeight(.medium)
             Text("在阅读 PDF 时可以添加笔记")
+                .font(.system(.body, design: useSerifFont ? .serif : .default))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -112,26 +114,27 @@ struct NoteRow: View {
 struct NoteCard: View {
     let book: PDFBook
     let note: BookNote
+    @AppStorage("useSerifFont") private var useSerifFont = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(book.title)
-                    .font(.system(.caption, design: .serif))
+                    .font(.system(.caption, design: useSerifFont ? .serif : .default))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
             }
 
             Text(note.content)
-                .font(.system(.body, design: .serif))
+                .font(.system(.body, design: useSerifFont ? .serif : .default))
                 .lineLimit(6)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer()
 
             Text(note.dateModified, style: .date)
-                .font(.system(.caption2, design: .serif))
+                .font(.system(.caption2, design: useSerifFont ? .serif : .default))
                 .foregroundStyle(.tertiary)
         }
         .padding(12)

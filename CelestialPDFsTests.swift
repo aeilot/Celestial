@@ -147,6 +147,59 @@ final class CelestialPDFsTests: XCTestCase {
         XCTAssertGreaterThan(point.y, selection.maxY)
     }
 
+    func testToolbarPrefers2pxAboveFirstLineWhenSpaceExists() {
+        let selection = CGRect(x: 140, y: 120, width: 50, height: 16)
+        let viewport = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let toolbar = CGSize(width: 220, height: 40)
+
+        let point = FloatingToolbarPlacement.computeToolbarPoint(
+            selection: selection,
+            viewport: viewport,
+            toolbar: toolbar,
+            margin: 8,
+            defaultPoint: .zero
+        )
+
+        let expectedY = selection.minY - toolbar.height / 2 - 2
+        XCTAssertEqual(point.y, expectedY, accuracy: 0.001)
+    }
+
+    func testToolbarFallsBackBelowWhenAboveWouldClip() {
+        let selection = CGRect(x: 100, y: 10, width: 50, height: 16)
+        let viewport = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let toolbar = CGSize(width: 220, height: 40)
+
+        let point = FloatingToolbarPlacement.computeToolbarPoint(
+            selection: selection,
+            viewport: viewport,
+            toolbar: toolbar,
+            margin: 8,
+            defaultPoint: .zero
+        )
+
+        let expectedY = selection.maxY + toolbar.height / 2 + 2
+        XCTAssertEqual(point.y, expectedY, accuracy: 0.001)
+    }
+
+    func testToolbarClampsHorizontallyWithinViewport() {
+        let selection = CGRect(x: 5, y: 140, width: 10, height: 16)
+        let viewport = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let toolbar = CGSize(width: 220, height: 40)
+
+        let point = FloatingToolbarPlacement.computeToolbarPoint(
+            selection: selection,
+            viewport: viewport,
+            toolbar: toolbar,
+            margin: 8,
+            defaultPoint: .zero
+        )
+
+        let minX = viewport.minX + toolbar.width / 2 + 8
+        let maxX = viewport.maxX - toolbar.width / 2 - 8
+        XCTAssertGreaterThanOrEqual(point.x, minX)
+        XCTAssertLessThanOrEqual(point.x, maxX)
+    }
+
     func testDetachNotesOnHighlightDeletePreservesContent() {
         let store = BookStore()
         let highlightID = UUID()
@@ -172,5 +225,25 @@ final class CelestialPDFsTests: XCTestCase {
         XCTAssertEqual(store.books.first?.notes.count, 1)
         XCTAssertEqual(store.books.first?.notes.first?.scope, .book)
         XCTAssertTrue(store.books.first?.notes.first?.content.contains("原高亮已删除") ?? false)
+    }
+
+    func testHighlightToolbarActionAddsHighlightWhenNoActiveHighlight() {
+        let action = ReaderHighlightToolbarAction.resolve(
+            tappedColorHex: "#FFEB3B",
+            activeHighlightID: nil,
+            currentHighlightColorHex: nil
+        )
+
+        XCTAssertEqual(action, .applyColor("#FFEB3B"))
+    }
+
+    func testHighlightToolbarActionDeletesWhenTappedCurrentColorOfActiveHighlight() {
+        let action = ReaderHighlightToolbarAction.resolve(
+            tappedColorHex: "#1E88E5",
+            activeHighlightID: UUID(),
+            currentHighlightColorHex: "#1E88E5"
+        )
+
+        XCTAssertEqual(action, .deleteHighlight)
     }
 }
