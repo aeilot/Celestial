@@ -1308,9 +1308,6 @@
         }
       }
     },
-    "为选中文字添加笔记；无选中时新建全书笔记" : {
-
-    },
     "书架" : {
       "localizations" : {
         "de" : {
@@ -2103,9 +2100,6 @@
         }
       }
     },
-    "基于选中文字提问；无选中时按全书上下文提问" : {
-
-    },
     "外观" : {
       "localizations" : {
         "en" : {
@@ -2121,6 +2115,9 @@
           }
         }
       }
+    },
+    "始终可见" : {
+
     },
     "字体" : {
       "localizations" : {
@@ -2171,6 +2168,7 @@
       }
     },
     "工具栏" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2245,9 +2243,6 @@
           }
         }
       }
-    },
-    "工具栏显示文字" : {
-
     },
     "已选中 %lld 个字符" : {
       "localizations" : {
@@ -2555,6 +2550,7 @@
       }
     },
     "放大 (⌘+)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2783,13 +2779,8 @@
         }
       }
     },
-    "显示或隐藏右侧面板" : {
-
-    },
-    "显示或隐藏左侧目录" : {
-
-    },
     "显示模式" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3248,6 +3239,7 @@
       }
     },
     "查询选中单词" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3934,6 +3926,9 @@
         }
       }
     },
+    "滚动感知显示" : {
+
+    },
     "点击上方「选择目录」按钮来指定 PDF 文件所在的文件夹" : {
       "localizations" : {
         "de" : {
@@ -4471,6 +4466,7 @@
       }
     },
     "缩小 (⌘-)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4623,6 +4619,7 @@
       }
     },
     "自动缩放" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4928,6 +4925,7 @@
       }
     },
     "适应宽度" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5004,6 +5002,7 @@
       }
     },
     "适应页面" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5535,6 +5534,15 @@
           }
         }
       }
+    },
+    "顶栏" : {
+
+    },
+    "顶栏可见性" : {
+
+    },
+    "顶部悬停显示" : {
+
     },
     "预览" : {
       "extractionState" : "stale",
